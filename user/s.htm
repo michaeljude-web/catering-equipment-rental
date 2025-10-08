@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Character Type Detector — Improved</title>
+  <style>
+    :root{--gap:8px;--pad:12px}
+    body{font-family:Inter,Segoe UI,Roboto,Arial;line-height:1.4;padding:18px;background:#f7f9fb;color:#111}
+    h1{font-size:20px;margin:0 0 12px}
+    .card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 6px 18px rgba(20,30,50,0.06)}
+    textarea{width:100%;min-height:120px;padding:12px;border:1px solid #d7dde6;border-radius:8px;resize:vertical}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    button{padding:8px 12px;border-radius:8px;border:1px solid #1f6feb;background:transparent;cursor:pointer}
+    button.primary{background:#1f6feb;color:#fff;border-color:transparent}
+    .stats{margin-top:12px}
+    .grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+    .item{min-width:38px;min-height:48px;border-radius:8px;padding:6px 8px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700;cursor:pointer;border:1px solid rgba(0,0,0,0.06);position:relative}
+    .char{font-size:18px;line-height:1.0}
+    .label{font-size:11px;margin-bottom:6px;opacity:0.95}
+
+    /* color by type */
+    .letter.upper{background:#e6f0ff;color:#08306b}
+    .letter.lower{background:#eef8ff;color:#0b66c2}
+    .number{background:#fff8ec;color:#8a4b00}
+    .other{background:#fff0f3;color:#7a1633}
+
+    /* fonts for clarity */
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,monospace}
+    .sans-bold{font-weight:800;font-family:Inter,Segoe UI,Roboto,Arial}
+    .italic{font-style:italic}
+
+    /* hover zoom */
+    .item:hover{transform:translateY(-4px) scale(1.03);box-shadow:0 8px 20px rgba(20,30,50,0.08)}
+    .item:active{transform:scale(0.98)}
+
+    .tooltip{font-size:12px;color:#666;margin-left:8px}
+    .small{font-size:13px;color:#555}
+    .muted{color:#777}
+    .hidden{display:none}
+    .row{display:flex;align-items:center;gap:8px}
+    .export{margin-top:12px}
+    .copy-btn{background:#eef7ff;border:1px solid #d5e9ff;padding:6px 8px;border-radius:6px}
+
+    /* subtle marker for ambiguous chars */
+    .ambiguous{box-shadow:0 0 0 2px rgba(255,165,0,0.12) inset}
+
+    @media (max-width:520px){.item{min-width:30px;min-height:40px;padding:4px}}
+  </style>
+</head>
+<body>
+  <h1>Character Type Detector — Improved</h1>
+  <div class="card">
+    <label class="small">Paste text (hashes, tokens, or any string) below:</label>
+    <textarea id="input" placeholder="Paste here... (try: i1lL O0)" ></textarea>
+
+    <div class="controls">
+      <button id="analyze" class="primary">Analyze</button>
+      <button id="clear">Clear</button>
+      <button id="copyInput">Copy Input</button>
+      <label class="row small muted"><input type="checkbox" id="showLabels" checked /> Show label (e.g. "digit one", "lower L")</label>
+      <label class="row small muted"><input type="checkbox" id="collapseSpaces" checked /> Hide spaces</label>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div id="grid" class="grid" aria-live="polite"></div>
+
+    <div class="export">
+      <button id="exportCSV">Export CSV</button>
+      <button id="exportText">Export mapping (plain)</button>
+      <span class="tooltip">Tip: click any character to copy that character + info.</span>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('input');
+    const analyze = document.getElementById('analyze');
+    const clear = document.getElementById('clear');
+    const grid = document.getElementById('grid');
+    const stats = document.getElementById('stats');
+    const copyInput = document.getElementById('copyInput');
+    const showLabels = document.getElementById('showLabels');
+    const collapseSpaces = document.getElementById('collapseSpaces');
+    const exportCSV = document.getElementById('exportCSV');
+    const exportText = document.getElementById('exportText');
+
+    function typeOfChar(ch){
+      if (ch >= '0' && ch <= '9') return 'number';
+      if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) return 'letter';
+      return 'other';
+    }
+
+    function ambiguousLabel(ch){
+      // handle visually ambiguous characters
+      const map = {
+        '1':'digit one',
+        'l':'lower L',
+        'L':'upper L',
+        'i':'lower i',
+        'I':'upper I',
+        '0':'digit zero',
+        'O':'upper O',
+        'o':'lower o'
+      };
+      return map.hasOwnProperty(ch) ? map[ch] : null;
+    }
+
+    function classForChar(ch){
+      const t = typeOfChar(ch);
+      if (t === 'number') return {main:'number', extra:'mono'};
+      if (t === 'letter'){
+        const isUpper = ch === ch.toUpperCase();
+        return {main:'letter '+(isUpper? 'upper' : 'lower'), extra: isUpper? 'sans-bold' : 'italic'};
+      }
+      return {main:'other', extra:'mono'};
+    }
+
+    function analyzeText(){
+      const txt = input.value || '';
+      grid.innerHTML = '';
+      if (!txt) { stats.textContent = 'No text provided.'; return }
+      const arr = Array.from(txt);
+      let counts = {letter:0, number:0, other:0};
+      arr.forEach((ch,i)=>{
+        if (ch === ' ' && collapseSpaces.checked) return; // skip spaces when collapsed
+        const t = typeOfChar(ch);
+        counts[t]++;
+
+        const classes = classForChar(ch);
+        const span = document.createElement('div');
+        span.className = 'item '+classes.main + ' ' + classes.extra + (ambiguousLabel(ch) ? ' ambiguous' : '');
+        span.dataset.index = i;
+        span.dataset.type = t;
+        span.dataset.code = ch.charCodeAt(0);
+        span.dataset.char = ch;
+
+        // label (small text above char) - shown when toggle is on
+        const labelText = ambiguousLabel(ch);
+        if (showLabels.checked && labelText){
+          const lbl = document.createElement('div');
+          lbl.className = 'label';
+          lbl.textContent = labelText;
+          span.appendChild(lbl);
+        } else if (showLabels.checked && t === 'letter'){
+          const caseLabel = (ch === ch.toUpperCase()) ? 'upper' : 'lower';
+          const lbl2 = document.createElement('div'); lbl2.className='label'; lbl2.textContent = caseLabel; span.appendChild(lbl2);
+        }
+
+        const chNode = document.createElement('div');
+        chNode.className = 'char';
+        chNode.textContent = ch === ' ' ? '␣' : ch;
+        span.appendChild(chNode);
+
+        span.title = `Index: ${i} | Type: ${t} | Code: ${ch.charCodeAt(0)}${labelText ? ' | '+labelText : ''}`;
+
+        span.addEventListener('click', ()=>{
+          const info = `${span.dataset.char}\tindex:${span.dataset.index}\ttype:${span.dataset.type}\tcode:${span.dataset.code}${labelText? '\tlabel:'+labelText : ''}`;
+          navigator.clipboard.writeText(info).then(()=>{
+            span.animate([{transform:'scale(1.0)'},{transform:'scale(1.06)'},{transform:'scale(1.0)'}],{duration:160});
+          }).catch(()=>{});
+        });
+
+        grid.appendChild(span);
+      });
+      stats.innerHTML = `<strong>Length:</strong> ${arr.length} &nbsp; <strong>Letters:</strong> ${counts.letter} &nbsp; <strong>Numbers:</strong> ${counts.number} &nbsp; <strong>Other:</strong> ${counts.other}`;
+    }
+
+    analyze.addEventListener('click', analyzeText);
+    clear.addEventListener('click', ()=>{ input.value=''; grid.innerHTML=''; stats.textContent=''; });
+    copyInput.addEventListener('click', ()=>{ navigator.clipboard.writeText(input.value || '').catch(()=>{}); });
+
+    exportCSV.addEventListener('click', ()=>{
+      const txt = input.value || '';
+      if (!txt) return alert('No text');
+      const rows = ['index,char,code,type,label'];
+      Array.from(txt).forEach((ch,i)=>{
+        rows.push(`${i},"${ch}",${ch.charCodeAt(0)},${typeOfChar(ch)},"${ambiguousLabel(ch)||''}"`);
+      });
+      const blob = new Blob([rows.join('\n')],{type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download='char-mapping.csv'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    exportText.addEventListener('click', ()=>{
+      const txt = input.value || '';
+      if (!txt) return alert('No text');
+      const lines = [];
+      Array.from(txt).forEach((ch,i)=>{
+        lines.push(`${i}: '${ch === ' ' ? 'SPACE' : ch}' (code ${ch.charCodeAt(0)}) -> ${typeOfChar(ch)}${ambiguousLabel(ch)? ' -> '+ambiguousLabel(ch): ''}`);
+      });
+      const blob = new Blob([lines.join('\n')],{type:'text/plain'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download='char-mapping.txt'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    // quick analyze on paste
+    input.addEventListener('paste', ()=> setTimeout(analyzeText,50));
+    // pressing Enter will analyze
+    input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' && (e.ctrlKey||e.metaKey)) analyzeText(); });
+
+    // initial example
+    input.value = 'i1lL O0 oI';
+    analyzeText();
+  </script>
+</body>
+</html>

@@ -14,20 +14,16 @@ if ($auth->isLoggedIn()) {
 
 function getCategoriesWithPhotos($categoryObj, $conn) {
     $categories = [];
-
     $totalCategories = $categoryObj->countCategories();
     $allCategories = $categoryObj->getCategories($totalCategories, 0);
     
     foreach ($allCategories as $category) {
         $catId = $category['id'];
-        
         $equipQuery = $conn->query("SELECT photo FROM equipments WHERE category_id = $catId AND photo IS NOT NULL ORDER BY RAND() LIMIT 1");
         $equip = $equipQuery->fetch_assoc();
-        
         $category['photo'] = $equip ? $equip['photo'] : "default.png";
         $categories[] = $category;
     }
-    
     return $categories;
 }
 
@@ -75,14 +71,12 @@ if (isset($_POST['action'])) {
             break;
             
         case 'signup':
-            $fullname = $_POST['fullname'] ?? '';
+            $full_name = $_POST['full_name'] ?? '';
             $email = $_POST['email'] ?? '';
             $password = $_POST['password'] ?? '';
-            $contact = $_POST['contact'] ?? '';
-            $address = $_POST['address'] ?? '';
             
-            if (empty($fullname) || empty($email) || empty($password)) {
-                echo json_encode(['status' => 'error', 'message' => 'Name, email, and password are required.']);
+            if (empty($full_name) || empty($email) || empty($password)) {
+                echo json_encode(['status' => 'error', 'message' => 'Full name, email, and password are required.']);
                 exit;
             }
             
@@ -91,7 +85,7 @@ if (isset($_POST['action'])) {
                 exit;
             }
             
-            $result = $auth->signup($fullname, $email, $password, $contact, $address);
+            $result = $auth->signup($full_name, $email, $password);
             echo json_encode($result);
             break;
             
@@ -106,7 +100,7 @@ if (isset($_POST['action'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>El Cielo</title>
+    <title>Dashboard</title>
     <link href="assets/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="assets/font/css/all.min.css">
     <link rel="stylesheet" href="user/style.css">
@@ -118,8 +112,8 @@ if (isset($_POST['action'])) {
     <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
         <div class="container">
             <a class="navbar-brand fw-bold d-flex align-items-center" href="index.php">
-                <img src="assets/img/logo.png" alt="Logo" width="40" height="40" class="me-2 rounded-circle">
-                <span>EquipRent</span>
+                <img src="assets/img/logos.png" alt="Logo" width="40" height="40" class="me-2 rounded-circle">
+                <span>Catering Services</span>
             </a>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" 
@@ -208,9 +202,10 @@ if (isset($_POST['action'])) {
 </main>
 
 <footer class="bg-white text-center py-4 shadow-sm mt-5">
-    <p class="mb-0 text-muted">&copy; 2025 EquipRent. All rights reserved.</p>
+    <p class="mb-0 text-muted">&copy; 2025 El Cielo. All rights reserved.</p>
 </footer>
 
+<!-- Login Modal -->
 <div class="modal fade" id="loginModal" tabindex="-1">
     <div class="modal-dialog">
         <form class="modal-content" id="loginForm">
@@ -224,7 +219,6 @@ if (isset($_POST['action'])) {
                 <div id="loginMessage"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="submit" class="btn btn-primary" id="loginBtn">
                     <i class="fas fa-sign-in-alt me-2"></i>Login
                 </button>
@@ -233,6 +227,7 @@ if (isset($_POST['action'])) {
     </div>
 </div>
 
+<!-- Signup Modal -->
 <div class="modal fade" id="signupModal" tabindex="-1">
     <div class="modal-dialog">
         <form class="modal-content" id="signupForm">
@@ -241,15 +236,12 @@ if (isset($_POST['action'])) {
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <input type="text" class="form-control mb-3" name="fullname" placeholder="Full Name" required>
+                <input type="text" class="form-control mb-3" name="full_name" placeholder="Full Name" required>
                 <input type="email" class="form-control mb-3" name="email" placeholder="Email Address" required>
                 <input type="password" class="form-control mb-3" name="password" placeholder="Password (min. 6 characters)" required minlength="6">
-                <input type="text" class="form-control mb-3" name="contact" placeholder="Contact Number">
-                <input type="text" class="form-control mb-3" name="address" placeholder="Address">
                 <div id="signupMessage"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="submit" class="btn btn-primary" id="signupBtn">
                     <i class="fas fa-user-plus me-2"></i>Create Account
                 </button>

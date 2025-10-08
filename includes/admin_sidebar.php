@@ -4,9 +4,9 @@
     
             <div class="bg-primary text-white fw-bold rounded d-flex align-items-center justify-content-center me-2" 
                  style="width:40px; height:40px; font-size:18px;">
-                EL
+                <i class="fa-solid fa-user-gear"></i>
             </div>
-            <span class="fs-5 fw-semibold">Celio</span>
+            <span class="fs-5 fw-semibold">ADMIN</span>
         
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mobileNavbar" aria-controls="mobileNavbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -43,9 +43,9 @@
         
             <div class="bg-primary text-white fw-bold rounded d-flex align-items-center justify-content-center me-2" 
                  style="width:40px; height:40px; font-size:18px;">
-                EL
+                <i class="fa-solid fa-user-gear"></i>
             </div>
-            <span class="fs-5 fw-semibold">Cielo Catering</span>
+            <span class="fs-5 fw-semibold">ADMIN</span>
         
         </div>
         <ul class="nav nav-pills flex-column mb-auto">
