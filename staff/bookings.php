@@ -42,10 +42,9 @@ if ($bookings_result) {
 
 // Fetch categories and equipments for booking modal
 $equipments = [];
-$equip_query = "SELECT e.id, e.name, e.price, e.stock, e.category_id, c.category_name 
+$equip_query = "SELECT e.id, e.name, e.price, e.category_id, c.category_name 
                 FROM equipments e 
                 JOIN categories c ON e.category_id = c.id 
-                WHERE e.stock > 0 
                 ORDER BY c.category_name, e.name";
 $equip_result = $conn->query($equip_query);
 if ($equip_result) {
@@ -91,7 +90,28 @@ if ($pkg_result) {
     }
     #bookingTypeButtons .btn {
         min-width: 150px;
+        color: white;
+        border: none;
     }
+    #equipmentBtn {
+        background-color: #0d6efd;
+    }
+    #equipmentBtn:hover {
+        background-color: #0b5ed7;
+    }
+    #packageBtn {
+        background-color: #198754;
+    }
+    #packageBtn:hover {
+        background-color: #157347;
+    }
+    #mixedBtn {
+        background-color: #6f42c1;
+    }
+    #mixedBtn:hover {
+        background-color: #5a32a3;
+    }
+  
     .status-badge {
         padding: 5px 10px;
         border-radius: 4px;
@@ -109,6 +129,16 @@ if ($pkg_result) {
     .booking-row:hover {
         background-color: #f8f9fa;
     }
+    .timer-badge {
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    .timer-upcoming { background-color: #0dcaf0; color: #000; }
+    .timer-soon { background-color: #ffc107; color: #000; }
+    .timer-overdue { background-color: #dc3545; color: white; }
+    .timer-returned { background-color: #6c757d; color: white; }
 </style>
 </head>
 <body>
@@ -145,12 +175,12 @@ if ($pkg_result) {
                         <table class="table table-hover">
                             <thead class="table-light">
                                 <tr>
-                                    <th>ID</th>
                                     <th>Customer Name</th>
                                     <th>Borrow Date</th>
                                     <th>Return Date</th>
                                     <th>Total Amount</th>
                                     <th>Status</th>
+                                    <th>Time Until Return</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -164,8 +194,9 @@ if ($pkg_result) {
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($bookings as $booking): ?>
-                                        <tr class="booking-row" onclick="viewBooking(<?php echo $booking['id']; ?>)">
-                                            <td><?php echo $booking['id']; ?></td>
+                                        <tr class="booking-row" onclick="viewBooking(<?php echo $booking['id']; ?>)" 
+                                            data-return-date="<?php echo $booking['return_date']; ?>" 
+                                            data-status="<?php echo $booking['status']; ?>">
                                             <td><?php echo htmlspecialchars($booking['customer_name']); ?></td>
                                             <td><?php echo date('M d, Y', strtotime($booking['borrow_date'])); ?></td>
                                             <td><?php echo date('M d, Y', strtotime($booking['return_date'])); ?></td>
@@ -173,6 +204,11 @@ if ($pkg_result) {
                                             <td>
                                                 <span class="status-badge status-<?php echo $booking['status']; ?>">
                                                     <?php echo $booking['status']; ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="timer-badge" id="timer-<?php echo $booking['id']; ?>">
+                                                    <i class="fas fa-clock"></i> Calculating...
                                                 </span>
                                             </td>
                                             <td>
@@ -204,7 +240,6 @@ if ($pkg_result) {
             </div>
             <div class="modal-body">
                 <form action="process_booking.php" method="POST" id="bookingForm">
-                    <!-- Customer Information -->
                     <h5 class="mb-3"><i class="fas fa-user"></i> Customer Information</h5>
                     <div class="row mb-3">
                         <div class="col-md-3">
@@ -225,7 +260,6 @@ if ($pkg_result) {
                         </div>
                     </div>
 
-                    <!-- Booking Dates -->
                     <h5 class="mb-3 mt-4"><i class="fas fa-calendar"></i> Booking Dates</h5>
                     <div class="row mb-3">
                         <div class="col-md-6">
@@ -238,18 +272,19 @@ if ($pkg_result) {
                         </div>
                     </div>
 
-                    <!-- Booking Type Selection -->
                     <h5 class="mb-3 mt-4"><i class="fas fa-box"></i> Select Booking Type</h5>
                     <div class="mb-3" id="bookingTypeButtons">
-                        <button type="button" class="btn btn-outline-primary" id="equipmentBtn" onclick="showBookingType('equipment')">
-                            <i class="fas fa-tools"></i> Equipment
+                        <button type="button" class="btn" id="equipmentBtn" onclick="showBookingType('equipment')">
+                            <i class="fas fa-tools"></i> Equipment Only
                         </button>
-                        <button type="button" class="btn btn-outline-success" id="packageBtn" onclick="showBookingType('package')">
-                            <i class="fas fa-box-open"></i> Package
+                        <button type="button" class="btn" id="packageBtn" onclick="showBookingType('package')">
+                            <i class="fas fa-box-open"></i> Package Only
+                        </button>
+                        <button type="button" class="btn" id="mixedBtn" onclick="showBookingType('mixed')">
+                            <i class="fas fa-layer-group"></i> Package + Equipment
                         </button>
                     </div>
 
-                    <!-- Equipment Selection -->
                     <div id="equipmentSection" style="display: none;">
                         <div class="card mb-3">
                             <div class="card-header bg-primary text-white">
@@ -264,7 +299,6 @@ if ($pkg_result) {
                         </div>
                     </div>
 
-                    <!-- Package Selection -->
                     <div id="packageSection" style="display: none;">
                         <div class="card mb-3">
                             <div class="card-header bg-success text-white">
@@ -279,19 +313,12 @@ if ($pkg_result) {
                         </div>
                     </div>
 
-                    <!-- Total Amount Display -->
                     <div class="alert alert-info">
                         <h5 class="mb-0"><strong>Total Amount: <span class="text-primary" id="totalAmount">₱0.00</span></strong></h5>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times"></i> Cancel
-                </button>
-                <button type="button" class="btn btn-warning" onclick="resetModalForm()">
-                    <i class="fas fa-undo"></i> Reset
-                </button>
                 <button type="submit" form="bookingForm" class="btn btn-primary">
                     <i class="fas fa-save"></i> Create Booking
                 </button>
@@ -317,9 +344,6 @@ if ($pkg_result) {
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            </div>
         </div>
     </div>
 </div>
@@ -336,22 +360,31 @@ let currentBookingType = null;
 
 function showBookingType(type) {
     currentBookingType = type;
+    
+    document.getElementById('equipmentSection').style.display = 'none';
+    document.getElementById('packageSection').style.display = 'none';
+    document.getElementById('equipmentBtn').classList.remove('active');
+    document.getElementById('packageBtn').classList.remove('active');
+    document.getElementById('mixedBtn').classList.remove('active');
+    
     if (type === 'equipment') {
         document.getElementById('equipmentSection').style.display = 'block';
-        document.getElementById('packageSection').style.display = 'none';
         document.getElementById('equipmentBtn').classList.add('active');
-        document.getElementById('packageBtn').classList.remove('active');
         document.getElementById('packageList').innerHTML = '';
         packageCounter = 0;
         if (equipmentCounter === 0) addEquipment();
-    } else {
-        document.getElementById('equipmentSection').style.display = 'none';
+    } else if (type === 'package') {
         document.getElementById('packageSection').style.display = 'block';
         document.getElementById('packageBtn').classList.add('active');
-        document.getElementById('equipmentBtn').classList.remove('active');
         document.getElementById('equipmentList').innerHTML = '';
         equipmentCounter = 0;
         if (packageCounter === 0) addPackage();
+    } else if (type === 'mixed') {
+        document.getElementById('equipmentSection').style.display = 'block';
+        document.getElementById('packageSection').style.display = 'block';
+        document.getElementById('mixedBtn').classList.add('active');
+        if (packageCounter === 0) addPackage();
+        if (equipmentCounter === 0) addEquipment();
     }
     calculateTotal();
 }
@@ -371,11 +404,11 @@ function addEquipment() {
             optionsHTML += `<optgroup label="${eq.category_name}">`;
             currentCategory = eq.category_name;
         }
-        optionsHTML += `<option value="${eq.id}" data-price="${eq.price}" data-stock="${eq.stock}">${eq.name} - ₱${parseFloat(eq.price).toFixed(2)} (Stock: ${eq.stock})</option>`;
+        optionsHTML += `<option value="${eq.id}" data-price="${eq.price}">${eq.name} - ₱${parseFloat(eq.price).toFixed(2)}</option>`;
     });
     if (currentCategory !== '') optionsHTML += '</optgroup>';
     
-    itemDiv.innerHTML = `<div class="row"><div class="col-md-8"><label class="form-label">Equipment</label><select class="form-select equipment-select" name="equipment_id[]" onchange="calculateTotal()" required>${optionsHTML}</select></div><div class="col-md-2"><label class="form-label">Quantity</label><input type="number" class="form-control equipment-quantity" name="equipment_quantity[]" value="1" min="1" onchange="validateStock(this); calculateTotal()" required></div><div class="col-md-2 d-flex align-items-end"><button type="button" class="btn btn-danger btn-sm w-100 remove-btn" onclick="removeEquipment(${equipmentCounter})"><i class="fas fa-trash"></i></button></div></div>`;
+    itemDiv.innerHTML = `<div class="row"><div class="col-md-8"><label class="form-label">Equipment</label><select class="form-select equipment-select" name="equipment_id[]" onchange="calculateTotal()" required>${optionsHTML}</select></div><div class="col-md-2"><label class="form-label">Quantity</label><input type="number" class="form-control equipment-quantity" name="equipment_quantity[]" value="1" min="1" onchange="calculateTotal()" required></div><div class="col-md-2 d-flex align-items-end"><button type="button" class="btn btn-danger btn-sm w-100 remove-btn" onclick="removeEquipment(${equipmentCounter})"><i class="fas fa-trash"></i></button></div></div>`;
     equipmentList.appendChild(itemDiv);
 }
 
@@ -422,20 +455,6 @@ function updatePackageDetails(select) {
     }
 }
 
-function validateStock(input) {
-    const row = input.closest('.equipment-item');
-    const select = row.querySelector('.equipment-select');
-    const selectedOption = select.options[select.selectedIndex];
-    if (selectedOption && selectedOption.value) {
-        const maxStock = parseInt(selectedOption.dataset.stock);
-        const quantity = parseInt(input.value);
-        if (quantity > maxStock) {
-            alert(`Maximum available stock is ${maxStock}`);
-            input.value = maxStock;
-        }
-    }
-}
-
 function calculateTotal() {
     let total = 0;
     document.querySelectorAll('.equipment-select').forEach((select, index) => {
@@ -465,6 +484,7 @@ function resetModalForm() {
     document.getElementById('packageSection').style.display = 'none';
     document.getElementById('equipmentBtn').classList.remove('active');
     document.getElementById('packageBtn').classList.remove('active');
+    document.getElementById('mixedBtn').classList.remove('active');
     document.getElementById('equipmentList').innerHTML = '';
     document.getElementById('packageList').innerHTML = '';
     document.getElementById('totalAmount').textContent = '₱0.00';
@@ -482,7 +502,7 @@ document.getElementById('borrow_date').addEventListener('change', function() {
 document.getElementById('bookingForm').addEventListener('submit', function(e) {
     if (!currentBookingType) {
         e.preventDefault();
-        alert('Please select a booking type (Equipment or Package)');
+        alert('Please select a booking type (Equipment, Package, or Package + Equipment)');
         return false;
     }
     const borrowDate = new Date(document.getElementById('borrow_date').value);
@@ -513,13 +533,77 @@ function displayBookingDetails(booking, items) {
     items.forEach(item => {
         itemsHTML += `<tr><td>${item.item_name}</td><td>${item.type}</td><td>${item.quantity}</td><td>₱${parseFloat(item.price).toFixed(2)}</td></tr>`;
     });
-    const html = `<div class="row"><div class="col-md-6"><h6><i class="fas fa-user"></i> Customer Information</h6><table class="table table-sm"><tr><th>Name:</th><td>${booking.customer_name}</td></tr><tr><th>Email:</th><td>${booking.email || 'N/A'}</td></tr><tr><th>Phone:</th><td>${booking.phone || 'N/A'}</td></tr><tr><th>Address:</th><td>${booking.address || 'N/A'}</td></tr></table></div><div class="col-md-6"><h6><i class="fas fa-calendar"></i> Booking Information</h6><table class="table table-sm"><tr><th>Booking ID:</th><td>#${booking.id}</td></tr><tr><th>Borrow Date:</th><td>${new Date(booking.borrow_date).toLocaleDateString()}</td></tr><tr><th>Return Date:</th><td>${new Date(booking.return_date).toLocaleDateString()}</td></tr><tr><th>Status:</th><td><span class="status-badge status-${booking.status}">${booking.status}</span></td></tr><tr><th>Created:</th><td>${new Date(booking.created_at).toLocaleString()}</td></tr></table></div></div><h6 class="mt-4"><i class="fas fa-list"></i> Booked Items</h6><div class="table-responsive"><table class="table table-bordered table-sm"><thead class="table-light"><tr><th>Item Name</th><th>Type</th><th>Quantity</th><th>Price</th></tr></thead><tbody>${itemsHTML}</tbody></table></div><div class="alert alert-success"><h5 class="mb-0"><strong>Total Amount: ₱${parseFloat(booking.total_amount).toFixed(2)}</strong></h5></div>`;
+    const html = `<div class="row"><div class="col-md-6"><h6><i class="fas fa-user"></i> Customer Information</h6><table class="table table-sm"><tr><th>Name:</th><td>${booking.customer_name}</td></tr><tr><th>Email:</th><td>${booking.email || 'N/A'}</td></tr><tr><th>Phone:</th><td>${booking.phone || 'N/A'}</td></tr><tr><th>Address:</th><td>${booking.address || 'N/A'}</td></tr></table></div><div class="col-md-6"><h6><i class="fas fa-calendar"></i> Booking Information</h6><table class="table table-sm"><tr><th>Borrow Date:</th><td>${new Date(booking.borrow_date).toLocaleDateString()}</td></tr><tr><th>Return Date:</th><td>${new Date(booking.return_date).toLocaleDateString()}</td></tr><tr><th>Status:</th><td><span class="status-badge status-${booking.status}">${booking.status}</span></td></tr><tr><th>Created:</th><td>${new Date(booking.created_at).toLocaleString()}</td></tr></table></div></div><h6 class="mt-4"><i class="fas fa-list"></i> Booked Items</h6><div class="table-responsive"><table class="table table-bordered table-sm"><thead class="table-light"><tr><th>Item Name</th><th>Type</th><th>Quantity</th><th>Price</th></tr></thead><tbody>${itemsHTML}</tbody></table></div><div class="alert alert-success"><h5 class="mb-0"><strong>Total Amount: ₱${parseFloat(booking.total_amount).toFixed(2)}</strong></h5></div>`;
     document.getElementById('bookingDetailsContent').innerHTML = html;
 }
 
 document.getElementById('addBookingModal').addEventListener('hidden.bs.modal', function () {
     resetModalForm();
 });
+
+// Timer functionality - Real-time countdown
+function updateTimers() {
+    const rows = document.querySelectorAll('.booking-row');
+    const now = new Date();
+    
+    rows.forEach(row => {
+        const returnDate = new Date(row.dataset.returnDate + ' 23:59:59');
+        const status = row.dataset.status;
+        const bookingId = row.getAttribute('onclick').match(/\d+/)[0];
+        const timerElement = document.getElementById(`timer-${bookingId}`);
+        
+        if (!timerElement) return;
+        
+        if (status === 'Returned') {
+            timerElement.className = 'timer-badge timer-returned';
+            timerElement.innerHTML = '<i class="fas fa-check-circle"></i> Returned';
+            return;
+        }
+        
+        if (status === 'Cancelled') {
+            timerElement.className = 'timer-badge timer-returned';
+            timerElement.innerHTML = '<i class="fas fa-times-circle"></i> Cancelled';
+            return;
+        }
+        
+        const timeDiff = returnDate - now;
+        
+        if (timeDiff < 0) {
+            const totalSeconds = Math.floor(Math.abs(timeDiff) / 1000);
+            const daysOverdue = Math.floor(totalSeconds / (60 * 60 * 24));
+            const hoursOverdue = Math.floor((totalSeconds % (60 * 60 * 24)) / (60 * 60));
+            const minutesOverdue = Math.floor((totalSeconds % (60 * 60)) / 60);
+            
+            timerElement.className = 'timer-badge timer-overdue';
+            if (daysOverdue > 0) {
+                timerElement.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Overdue: ${daysOverdue}d ${hoursOverdue}h`;
+            } else {
+                timerElement.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Overdue: ${hoursOverdue}h ${minutesOverdue}m`;
+            }
+            return;
+        }
+        
+        const totalSeconds = Math.floor(timeDiff / 1000);
+        const days = Math.floor(totalSeconds / (60 * 60 * 24));
+        const hours = Math.floor((totalSeconds % (60 * 60 * 24)) / (60 * 60));
+        const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
+        const seconds = totalSeconds % 60;
+        
+        if (days === 0 && hours < 24) {
+            timerElement.className = 'timer-badge timer-soon';
+            timerElement.innerHTML = `<i class="fas fa-hourglass-half"></i> ${hours}h ${minutes}m ${seconds}s`;
+        } else if (days < 3) {
+            timerElement.className = 'timer-badge timer-soon';
+            timerElement.innerHTML = `<i class="fas fa-clock"></i> ${days}d ${hours}h ${minutes}m`;
+        } else {
+            timerElement.className = 'timer-badge timer-upcoming';
+            timerElement.innerHTML = `<i class="fas fa-calendar-check"></i> ${days}d ${hours}h`;
+        }
+    });
+}
+
+updateTimers();
+setInterval(updateTimers, 1000);
 </script>
 </body>
 </html>
