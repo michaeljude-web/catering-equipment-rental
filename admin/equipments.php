@@ -33,7 +33,7 @@ if(isset($_GET['ajax_search'])) {
     }
     
     $countQuery = "SELECT COUNT(*) as total FROM equipments e LEFT JOIN categories c ON e.category_id = c.id $whereClause";
-    $query = "SELECT e.id, e.name, e.photo, e.price, e.quantity, e.stock, c.category_name AS category 
+    $query = "SELECT e.id, e.name, e.photo, e.price, c.category_name AS category 
               FROM equipments e 
               LEFT JOIN categories c ON e.category_id = c.id 
               $whereClause
@@ -90,7 +90,6 @@ if(isset($_POST['add_equipment'])) {
     $name = $_POST['name'];
     $category_id = $_POST['category_id'];
     $price = $_POST['price'];
-    $quantity = $_POST['quantity'];
 
     $photoName = null;
     if(isset($_FILES['photo']) && $_FILES['photo']['name'] != '') {
@@ -98,9 +97,8 @@ if(isset($_POST['add_equipment'])) {
         move_uploaded_file($_FILES['photo']['tmp_name'], "../uploads/".$photoName);
     }
 
-    $stmt = $conn->prepare("INSERT INTO equipments (name, category_id, price, quantity, stock, photo, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-    $stock = $quantity;
-    $stmt->bind_param("sidiss", $name, $category_id, $price, $quantity, $stock, $photoName);
+    $stmt = $conn->prepare("INSERT INTO equipments (name, category_id, price, photo, created_at) VALUES (?, ?, ?, ?, NOW())");
+    $stmt->bind_param("sids", $name, $category_id, $price, $photoName);
     $stmt->execute();
     $stmt->close();
 
@@ -113,17 +111,15 @@ if(isset($_POST['edit_equipment'])) {
     $name = $_POST['name'];
     $category_id = $_POST['category_id'];
     $price = $_POST['price'];
-    $quantity = $_POST['quantity'];
-    $stock = $_POST['stock'];
 
     if(isset($_FILES['photo']) && $_FILES['photo']['name'] != '') {
         $photoName = time().'_'.basename($_FILES['photo']['name']);
         move_uploaded_file($_FILES['photo']['tmp_name'], "../uploads/".$photoName);
-        $stmt = $conn->prepare("UPDATE equipments SET name=?, category_id=?, price=?, quantity=?, stock=?, photo=? WHERE id=?");
-        $stmt->bind_param("siddssi", $name, $category_id, $price, $quantity, $stock, $photoName, $id);
+        $stmt = $conn->prepare("UPDATE equipments SET name=?, category_id=?, price=?, photo=? WHERE id=?");
+        $stmt->bind_param("sidsi", $name, $category_id, $price, $photoName, $id);
     } else {
-        $stmt = $conn->prepare("UPDATE equipments SET name=?, category_id=?, price=?, quantity=?, stock=? WHERE id=?");
-        $stmt->bind_param("siddsi", $name, $category_id, $price, $quantity, $stock, $id);
+        $stmt = $conn->prepare("UPDATE equipments SET name=?, category_id=?, price=? WHERE id=?");
+        $stmt->bind_param("sidi", $name, $category_id, $price, $id);
     }
 
     $stmt->execute();
@@ -155,7 +151,7 @@ $total = $totalResult->fetch_assoc()['total'];
 $pagination = new Pagination($total, $page, $limit);
 $offset = $pagination->getOffset();
 
-$query = $conn->query("SELECT e.id, e.name, e.photo, e.price, e.quantity, e.stock, c.category_name AS category 
+$query = $conn->query("SELECT e.id, e.name, e.photo, e.price, c.category_name AS category 
                        FROM equipments e 
                        LEFT JOIN categories c ON e.category_id = c.id 
                        ORDER BY e.id DESC 
@@ -238,8 +234,6 @@ if($catQuery){
                             <th>Photo</th>
                             <th>Category</th>
                             <th>Price</th>
-                            <th>Quantity</th>
-                            <th>Stock</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -254,16 +248,12 @@ if($catQuery){
                             </td>
                             <td><?= htmlspecialchars($eq['category'] ?? 'N/A') ?></td>
                             <td><?= number_format($eq['price'] ?? 0,2) ?></td>
-                            <td><?= htmlspecialchars($eq['quantity'] ?? 0) ?></td>
-                            <td><?= htmlspecialchars($eq['stock'] ?? 0) ?></td>
                             <td>
                                 <button class="btn btn-sm btn-warning" onclick="openEditModal(
                                     '<?= $eq['id'] ?>',
                                     '<?= htmlspecialchars($eq['name'], ENT_QUOTES) ?>',
                                     '<?= $eq['category'] ?>',
                                     '<?= $eq['price'] ?>',
-                                    '<?= $eq['quantity'] ?>',
-                                    '<?= $eq['stock'] ?>',
                                     '<?= $eq['photo'] ?>'
                                 )"><i class="fas fa-edit"></i></button>
 
@@ -311,7 +301,6 @@ if($catQuery){
               <?php endforeach; ?>
           </select>
           <input type="number" name="price" placeholder="Price" step="0.01" class="form-control mb-2" required>
-          <input type="number" name="quantity" placeholder="Quantity" class="form-control mb-2" required>
           <input type="file" name="photo" class="form-control">
       </div>
       <div class="modal-footer">
@@ -337,8 +326,6 @@ if($catQuery){
               <?php endforeach; ?>
           </select>
           <input type="number" name="price" id="edit_price" class="form-control mb-2" step="0.01" required>
-          <input type="number" name="quantity" id="edit_quantity" class="form-control mb-2" required>
-          <input type="number" name="stock" id="edit_stock" class="form-control mb-2" required>
           <div id="edit_photo_preview" class="mb-2"></div>
           <input type="file" name="photo" class="form-control">
       </div>
