@@ -33,7 +33,7 @@ if(isset($_GET['ajax_search'])) {
     }
     
     $countQuery = "SELECT COUNT(*) as total FROM equipments e LEFT JOIN categories c ON e.category_id = c.id $whereClause";
-    $query = "SELECT e.id, e.name, e.photo, e.price, c.category_name AS category 
+    $query = "SELECT e.id, e.name, e.photo, e.price, e.quantity, e.stock, c.category_name AS category 
               FROM equipments e 
               LEFT JOIN categories c ON e.category_id = c.id 
               $whereClause
@@ -90,6 +90,7 @@ if(isset($_POST['add_equipment'])) {
     $name = $_POST['name'];
     $category_id = $_POST['category_id'];
     $price = $_POST['price'];
+    $quantity = $_POST['quantity'];
 
     $photoName = null;
     if(isset($_FILES['photo']) && $_FILES['photo']['name'] != '') {
@@ -97,8 +98,9 @@ if(isset($_POST['add_equipment'])) {
         move_uploaded_file($_FILES['photo']['tmp_name'], "../uploads/".$photoName);
     }
 
-    $stmt = $conn->prepare("INSERT INTO equipments (name, category_id, price, photo, created_at) VALUES (?, ?, ?, ?, NOW())");
-    $stmt->bind_param("sids", $name, $category_id, $price, $photoName);
+    // Stock is initially same as quantity (all items available)
+    $stmt = $conn->prepare("INSERT INTO equipments (name, category_id, price, quantity, stock, photo, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
+    $stmt->bind_param("sidiis", $name, $category_id, $price, $quantity, $quantity, $photoName);
     $stmt->execute();
     $stmt->close();
 
@@ -111,15 +113,32 @@ if(isset($_POST['edit_equipment'])) {
     $name = $_POST['name'];
     $category_id = $_POST['category_id'];
     $price = $_POST['price'];
+    $quantity = $_POST['quantity'];
+    
+    // Get current quantity and stock to calculate difference
+    $currentStmt = $conn->prepare("SELECT quantity, stock FROM equipments WHERE id=?");
+    $currentStmt->bind_param("i", $id);
+    $currentStmt->execute();
+    $currentData = $currentStmt->get_result()->fetch_assoc();
+    $currentQuantity = $currentData['quantity'];
+    $currentStock = $currentData['stock'];
+    $currentStmt->close();
+    
+    // Calculate the difference in quantity
+    $quantityDiff = $quantity - $currentQuantity;
+    $newStock = $currentStock + $quantityDiff;
+    
+    // Ensure stock doesn't go below 0
+    $newStock = max(0, $newStock);
 
     if(isset($_FILES['photo']) && $_FILES['photo']['name'] != '') {
         $photoName = time().'_'.basename($_FILES['photo']['name']);
         move_uploaded_file($_FILES['photo']['tmp_name'], "../uploads/".$photoName);
-        $stmt = $conn->prepare("UPDATE equipments SET name=?, category_id=?, price=?, photo=? WHERE id=?");
-        $stmt->bind_param("sidsi", $name, $category_id, $price, $photoName, $id);
+        $stmt = $conn->prepare("UPDATE equipments SET name=?, category_id=?, price=?, quantity=?, stock=?, photo=? WHERE id=?");
+        $stmt->bind_param("sidiisi", $name, $category_id, $price, $quantity, $newStock, $photoName, $id);
     } else {
-        $stmt = $conn->prepare("UPDATE equipments SET name=?, category_id=?, price=? WHERE id=?");
-        $stmt->bind_param("sidi", $name, $category_id, $price, $id);
+        $stmt = $conn->prepare("UPDATE equipments SET name=?, category_id=?, price=?, quantity=?, stock=? WHERE id=?");
+        $stmt->bind_param("sidiii", $name, $category_id, $price, $quantity, $newStock, $id);
     }
 
     $stmt->execute();
@@ -151,7 +170,7 @@ $total = $totalResult->fetch_assoc()['total'];
 $pagination = new Pagination($total, $page, $limit);
 $offset = $pagination->getOffset();
 
-$query = $conn->query("SELECT e.id, e.name, e.photo, e.price, c.category_name AS category 
+$query = $conn->query("SELECT e.id, e.name, e.photo, e.price, e.quantity, e.stock, c.category_name AS category 
                        FROM equipments e 
                        LEFT JOIN categories c ON e.category_id = c.id 
                        ORDER BY e.id DESC 
@@ -192,6 +211,18 @@ if($catQuery){
     top: 50%;
     transform: translateY(-50%);
     display: none;
+}
+.badge-stock {
+    font-size: 0.85rem;
+}
+.stock-low {
+    background-color: #dc3545;
+}
+.stock-medium {
+    background-color: #ffc107;
+}
+.stock-high {
+    background-color: #28a745;
 }
 </style>
 </head>
@@ -234,11 +265,16 @@ if($catQuery){
                             <th>Photo</th>
                             <th>Category</th>
                             <th>Price</th>
+                            <!-- <th>Quantity</th> -->
+                            <th>Stock</th>
                             <th>Action</th>
                         </tr>
                     </thead>
                     <tbody id="equipmentTableBody">
-                        <?php foreach($equipments as $eq): ?>
+                        <?php foreach($equipments as $eq): 
+                            $stockPercentage = $eq['quantity'] > 0 ? ($eq['stock'] / $eq['quantity']) * 100 : 0;
+                            $stockClass = $stockPercentage <= 30 ? 'stock-low' : ($stockPercentage <= 60 ? 'stock-medium' : 'stock-high');
+                        ?>
                         <tr>
                             <td><?= htmlspecialchars($eq['name'] ?? 'N/A') ?></td>
                             <td>
@@ -247,13 +283,21 @@ if($catQuery){
                                 <?php else: ?>N/A<?php endif; ?>
                             </td>
                             <td><?= htmlspecialchars($eq['category'] ?? 'N/A') ?></td>
-                            <td><?= number_format($eq['price'] ?? 0,2) ?></td>
+                            <td>₱<?= number_format($eq['price'] ?? 0,2) ?></td>
+                           
+                            <td>
+                                <span class="badge badge-stock <?= $stockClass ?>">
+                                    <?= $eq['stock'] ?? 0 ?> / <?= $eq['quantity'] ?? 0 ?>
+                                </span>
+                            </td>
                             <td>
                                 <button class="btn btn-sm btn-warning" onclick="openEditModal(
                                     '<?= $eq['id'] ?>',
                                     '<?= htmlspecialchars($eq['name'], ENT_QUOTES) ?>',
                                     '<?= $eq['category'] ?>',
                                     '<?= $eq['price'] ?>',
+                                    '<?= $eq['quantity'] ?>',
+                                    '<?= $eq['stock'] ?>',
                                     '<?= $eq['photo'] ?>'
                                 )"><i class="fas fa-edit"></i></button>
 
@@ -294,17 +338,42 @@ if($catQuery){
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-          <input type="text" name="name" placeholder="Name" class="form-control mb-2" required>
-          <select name="category_id" class="form-select mb-2" required>
-              <?php foreach($categories as $cat): ?>
-                  <option value="<?= $cat['id'] ?>"><?= $cat['category_name'] ?></option>
-              <?php endforeach; ?>
-          </select>
-          <input type="number" name="price" placeholder="Price" step="0.01" class="form-control mb-2" required>
-          <input type="file" name="photo" class="form-control">
+          <div class="mb-3">
+              <label class="form-label">Name</label>
+              <input type="text" name="name" class="form-control" required>
+          </div>
+          
+          <div class="mb-3">
+              <label class="form-label">Category</label>
+              <select name="category_id" class="form-select" required>
+                  <option value="">Select Category</option>
+                  <?php foreach($categories as $cat): ?>
+                      <option value="<?= $cat['id'] ?>"><?= $cat['category_name'] ?></option>
+                  <?php endforeach; ?>
+              </select>
+          </div>
+          
+          <div class="mb-3">
+              <label class="form-label">Price</label>
+              <input type="number" name="price" step="0.01" class="form-control" required>
+          </div>
+          
+          <div class="mb-3">
+              <label class="form-label">Quantity (Total Items)</label>
+              <input type="number" name="quantity" min="0" class="form-control" required>
+              <small class="text-muted">Total number of items. Stock will be set to this initially.</small>
+          </div>
+          
+          <div class="mb-3">
+              <label class="form-label">Photo (Optional)</label>
+              <input type="file" name="photo" class="form-control" accept="image/*">
+          </div>
       </div>
       <div class="modal-footer">
-        <button type="submit" name="add_equipment" class="btn btn-success">Add Equipment</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" name="add_equipment" class="btn btn-success">
+            <i class="fas fa-plus"></i> Add Equipment
+        </button>
       </div>
     </form>
   </div>
@@ -319,18 +388,43 @@ if($catQuery){
       </div>
       <div class="modal-body">
           <input type="hidden" name="id" id="edit_id">
-          <input type="text" name="name" id="edit_name" class="form-control mb-2" required>
-          <select name="category_id" id="edit_category_id" class="form-select mb-2" required>
-              <?php foreach($categories as $cat): ?>
-                  <option value="<?= $cat['id'] ?>"><?= $cat['category_name'] ?></option>
-              <?php endforeach; ?>
-          </select>
-          <input type="number" name="price" id="edit_price" class="form-control mb-2" step="0.01" required>
+          
+          <div class="mb-3">
+              <label class="form-label">Name</label>
+              <input type="text" name="name" id="edit_name" class="form-control" required>
+          </div>
+          
+          <div class="mb-3">
+              <label class="form-label">Category</label>
+              <select name="category_id" id="edit_category_id" class="form-select" required>
+                  <?php foreach($categories as $cat): ?>
+                      <option value="<?= $cat['id'] ?>"><?= $cat['category_name'] ?></option>
+                  <?php endforeach; ?>
+              </select>
+          </div>
+          
+          <div class="mb-3">
+              <label class="form-label">Price</label>
+              <input type="number" name="price" id="edit_price" class="form-control" step="0.01" required>
+          </div>
+          
+          <div class="mb-3">
+              <label class="form-label">Quantity (Total Items)</label>
+              <input type="number" name="quantity" id="edit_quantity" min="0" class="form-control" required>
+              <small class="text-muted">Current Stock: <strong id="edit_stock_display">0</strong></small>
+          </div>
+          
           <div id="edit_photo_preview" class="mb-2"></div>
-          <input type="file" name="photo" class="form-control">
+          <div class="mb-3">
+              <label class="form-label">Photo (Optional)</label>
+              <input type="file" name="photo" class="form-control" accept="image/*">
+          </div>
       </div>
       <div class="modal-footer">
-        <button type="submit" name="edit_equipment" class="btn btn-success">Save Changes</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" name="edit_equipment" class="btn btn-success">
+            <i class="fas fa-save"></i> Save Changes
+        </button>
       </div>
     </form>
   </div>
@@ -338,7 +432,112 @@ if($catQuery){
 
 <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="../assets/font/js/all.min.js"></script>
-<script src="script.js"></script>
+<script>
+function openEditModal(id, name, category, price, quantity, stock, photo) {
+    document.getElementById('edit_id').value = id;
+    document.getElementById('edit_name').value = name;
+    document.getElementById('edit_price').value = price;
+    document.getElementById('edit_quantity').value = quantity;
+    document.getElementById('edit_stock_display').textContent = stock;
+    
+    // Set category
+    const categorySelect = document.getElementById('edit_category_id');
+    for(let i = 0; i < categorySelect.options.length; i++) {
+        if(categorySelect.options[i].text === category) {
+            categorySelect.selectedIndex = i;
+            break;
+        }
+    }
+    
+    // Show photo preview
+    const photoPreview = document.getElementById('edit_photo_preview');
+    if(photo) {
+        photoPreview.innerHTML = `<img src="../uploads/${photo}" width="100" class="rounded mb-2">`;
+    } else {
+        photoPreview.innerHTML = '';
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('editEquipmentModal'));
+    modal.show();
+}
+
+// Search functionality
+let searchTimeout;
+const searchInput = document.getElementById('searchInput');
+const searchLoading = document.querySelector('.search-loading');
+const equipmentTableBody = document.getElementById('equipmentTableBody');
+const paginationContainer = document.getElementById('paginationContainer');
+const totalInfo = document.getElementById('totalInfo');
+const noResults = document.getElementById('noResults');
+
+searchInput.addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    searchLoading.style.display = 'block';
+    
+    searchTimeout = setTimeout(() => {
+        const searchValue = this.value.trim();
+        performSearch(searchValue);
+    }, 500);
+});
+
+function performSearch(searchTerm) {
+    fetch(`equipments.php?ajax_search=1&search=${encodeURIComponent(searchTerm)}&page=1`)
+        .then(response => response.json())
+        .then(data => {
+            searchLoading.style.display = 'none';
+            
+            if(data.data.length === 0) {
+                equipmentTableBody.innerHTML = '';
+                noResults.style.display = 'block';
+                paginationContainer.innerHTML = '';
+                totalInfo.textContent = 'No equipments found';
+            } else {
+                noResults.style.display = 'none';
+                
+                equipmentTableBody.innerHTML = data.data.map(eq => {
+                    const stockPercentage = eq.quantity > 0 ? (eq.stock / eq.quantity) * 100 : 0;
+                    const stockClass = stockPercentage <= 30 ? 'stock-low' : (stockPercentage <= 60 ? 'stock-medium' : 'stock-high');
+                    
+                    return `
+                        <tr>
+                            <td>${escapeHtml(eq.name || 'N/A')}</td>
+                            <td>${eq.photo ? `<img src="../uploads/${escapeHtml(eq.photo)}" width="50" class="rounded">` : 'N/A'}</td>
+                            <td>${escapeHtml(eq.category || 'N/A')}</td>
+                            <td>₱${parseFloat(eq.price || 0).toFixed(2)}</td>
+                            <td><span class="badge bg-secondary">${eq.quantity || 0}</span></td>
+                            <td>
+                                <span class="badge badge-stock ${stockClass}">
+                                    ${eq.stock || 0} / ${eq.quantity || 0}
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-warning" onclick="openEditModal('${eq.id}','${escapeHtml(eq.name)}','${escapeHtml(eq.category)}','${eq.price}','${eq.quantity}','${eq.stock}','${eq.photo || ''}')">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <a href="?delete_id=${eq.id}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?');">
+                                    <i class="fas fa-trash-alt"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+                
+                paginationContainer.innerHTML = data.pagination;
+                totalInfo.textContent = `Showing ${data.data.length} of ${data.total} equipments`;
+            }
+        })
+        .catch(error => {
+            console.error('Search error:', error);
+            searchLoading.style.display = 'none';
+        });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
 
 </body>
 </html>

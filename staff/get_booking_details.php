@@ -12,8 +12,20 @@ if (!isset($_GET['id'])) {
 $booking_id = intval($_GET['id']);
 
 try {
-    // Get booking details
-    $stmt = $conn->prepare("SELECT id, customer_name, email, phone, address, borrow_date, return_date, total_amount, status, created_at FROM customer_booking WHERE id = ?");
+    // Get booking details with computed fine
+    $stmt = $conn->prepare("
+        SELECT 
+            id, customer_name, email, phone, address, 
+            borrow_date, return_date, actual_return_date,
+            total_amount, fine_amount, damage_fee, damage_notes,
+            status, created_at,
+            CASE 
+                WHEN status = 'Borrowed' AND NOW() > return_date THEN TIMESTAMPDIFF(HOUR, return_date, NOW()) * 100
+                ELSE fine_amount
+            END as calculated_fine
+        FROM customer_booking 
+        WHERE id = ?
+    ");
     $stmt->bind_param("i", $booking_id);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -24,6 +36,8 @@ try {
     }
     
     $booking = $result->fetch_assoc();
+    $booking['fine_amount'] = $booking['calculated_fine']; // Use real-time calculated fine
+    unset($booking['calculated_fine']); // Remove temporary field
     $stmt->close();
     
     // Get booking items

@@ -2,51 +2,48 @@
 session_start();
 include '../includes/db_connection.php';
 
-// Check if form was submitted
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: bookings.php');
     exit();
 }
 
-// Validate required fields
-if (empty($_POST['customer_name']) || empty($_POST['borrow_date']) || empty($_POST['return_date'])) {
+if (empty($_POST['customer_name']) || empty($_POST['return_date'])) {
     $_SESSION['error_message'] = 'Please fill in all required fields.';
     header('Location: bookings.php');
     exit();
 }
 
-// Sanitize and validate input
 $customer_name = trim($_POST['customer_name']);
 $email = !empty($_POST['email']) ? trim($_POST['email']) : null;
 $phone = !empty($_POST['phone']) ? trim($_POST['phone']) : null;
 $address = !empty($_POST['address']) ? trim($_POST['address']) : null;
-$borrow_date = $_POST['borrow_date'];
-$return_date = $_POST['return_date'];
+$borrow_date = date('Y-m-d H:i:s'); // Current datetime
+$return_date = $_POST['return_date']; // datetime-local format
 
-// Validate dates
-$borrow_datetime = strtotime($borrow_date);
+// Validate return date is in the future
 $return_datetime = strtotime($return_date);
+$current_datetime = time();
 
-if ($return_datetime < $borrow_datetime) {
-    $_SESSION['error_message'] = 'Return date must be on or after the borrow date.';
+if ($return_datetime <= $current_datetime) {
+    $_SESSION['error_message'] = 'Return date must be in the future.';
     header('Location: bookings.php');
     exit();
 }
 
-// Get equipment or package data
+// Convert to proper datetime format for MySQL
+$return_date_formatted = date('Y-m-d H:i:s', $return_datetime);
+
 $equipment_ids = isset($_POST['equipment_id']) ? $_POST['equipment_id'] : [];
 $equipment_quantities = isset($_POST['equipment_quantity']) ? $_POST['equipment_quantity'] : [];
 $package_ids = isset($_POST['package_id']) ? $_POST['package_id'] : [];
 $package_quantities = isset($_POST['package_quantity']) ? $_POST['package_quantity'] : [];
 
-// Validate that at least one item is selected
 if (empty($equipment_ids) && empty($package_ids)) {
     $_SESSION['error_message'] = 'Please select at least one equipment or package.';
     header('Location: bookings.php');
     exit();
 }
 
-// Begin transaction
 $conn->begin_transaction();
 
 try {
@@ -64,7 +61,6 @@ try {
                 throw new Exception("Invalid quantity for equipment.");
             }
             
-            // Get equipment details and check stock
             $stmt = $conn->prepare("SELECT name, price, stock FROM equipments WHERE id = ?");
             $stmt->bind_param("i", $equipment_id);
             $stmt->execute();
@@ -77,16 +73,13 @@ try {
             $equipment = $result->fetch_assoc();
             $stmt->close();
             
-            // Check if enough stock is available
             if ($equipment['stock'] < $quantity) {
                 throw new Exception("Insufficient stock for {$equipment['name']}. Available: {$equipment['stock']}, Requested: {$quantity}");
             }
             
-            // Calculate price
             $item_price = $equipment['price'] * $quantity;
             $total_amount += $item_price;
             
-            // Store booking item details
             $booking_items[] = [
                 'type' => 'equipment',
                 'id' => $equipment_id,
@@ -108,7 +101,6 @@ try {
                 throw new Exception("Invalid quantity for package.");
             }
             
-            // Get package details
             $stmt = $conn->prepare("SELECT package_name, price FROM packages WHERE id = ?");
             $stmt->bind_param("i", $package_id);
             $stmt->execute();
@@ -121,7 +113,6 @@ try {
             $package = $result->fetch_assoc();
             $stmt->close();
             
-            // Check if package items have sufficient stock
             $stmt = $conn->prepare("
                 SELECT pi.equipment_id, pi.quantity as pkg_quantity, e.name, e.stock 
                 FROM package_items pi
@@ -140,11 +131,9 @@ try {
             }
             $stmt->close();
             
-            // Calculate price
             $item_price = $package['price'] * $quantity;
             $total_amount += $item_price;
             
-            // Store booking item details
             $booking_items[] = [
                 'type' => 'package',
                 'id' => $package_id,
@@ -154,9 +143,9 @@ try {
         }
     }
     
-    // Insert into customer_booking table
+    // Insert into customer_booking table with datetime
     $stmt = $conn->prepare("INSERT INTO customer_booking (customer_name, email, phone, address, borrow_date, return_date, total_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Borrowed')");
-    $stmt->bind_param("ssssssd", $customer_name, $email, $phone, $address, $borrow_date, $return_date, $total_amount);
+    $stmt->bind_param("ssssssd", $customer_name, $email, $phone, $address, $borrow_date, $return_date_formatted, $total_amount);
     
     if (!$stmt->execute()) {
         throw new Exception("Failed to create booking: " . $stmt->error);
@@ -168,7 +157,6 @@ try {
     // Insert booking items and update stock
     foreach ($booking_items as $item) {
         if ($item['type'] === 'equipment') {
-            // Insert booking item
             $stmt = $conn->prepare("INSERT INTO booking_items (booking_id, equipment_id, package_id, quantity, price) VALUES (?, ?, NULL, ?, ?)");
             $stmt->bind_param("iiid", $booking_id, $item['id'], $item['quantity'], $item['price']);
             
@@ -177,7 +165,6 @@ try {
             }
             $stmt->close();
             
-            // Update equipment stock
             $stmt = $conn->prepare("UPDATE equipments SET stock = stock - ? WHERE id = ?");
             $stmt->bind_param("ii", $item['stock_to_reduce'], $item['id']);
             
@@ -187,7 +174,6 @@ try {
             $stmt->close();
             
         } else if ($item['type'] === 'package') {
-            // Insert booking item
             $stmt = $conn->prepare("INSERT INTO booking_items (booking_id, equipment_id, package_id, quantity, price) VALUES (?, NULL, ?, ?, ?)");
             $stmt->bind_param("iiid", $booking_id, $item['id'], $item['quantity'], $item['price']);
             
@@ -196,7 +182,6 @@ try {
             }
             $stmt->close();
             
-            // Update stock for all equipment in the package
             $stmt = $conn->prepare("SELECT equipment_id, quantity FROM package_items WHERE package_id = ?");
             $stmt->bind_param("i", $item['id']);
             $stmt->execute();
@@ -217,7 +202,6 @@ try {
         }
     }
     
-    // Commit transaction
     $conn->commit();
     
     $_SESSION['success_message'] = "Booking recorded successfully! Booking ID: #{$booking_id}. Total Amount: ₱" . number_format($total_amount, 2);
@@ -225,7 +209,6 @@ try {
     exit();
     
 } catch (Exception $e) {
-    // Rollback transaction on error
     $conn->rollback();
     
     $_SESSION['error_message'] = "Booking failed: " . $e->getMessage();
