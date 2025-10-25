@@ -204,7 +204,7 @@ try {
     
     $conn->commit();
     
-    $_SESSION['success_message'] = "Booking recorded successfully! Booking ID: #{$booking_id}. Total Amount: ₱" . number_format($total_amount, 2);
+    $_SESSION['success_message'] = "Booking recorded successfully! Total Amount: ₱" . number_format($total_amount, 2);
     header('Location: bookings.php');
     exit();
     

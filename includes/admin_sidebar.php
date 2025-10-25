@@ -19,7 +19,7 @@
                 <li class="nav-item"><a class="nav-link" href="equipments.php"><i class="fa-solid fa-toolbox me-1"></i> Equipment</a></li>
                 <li class="nav-item"><a class="nav-link" href="packages.php"><i class="fa-solid fa-box me-1"></i> Packages</a></li>
                 <li class="nav-item"><a class="nav-link" href="staff.php"><i class="fa-solid fa-users-gear me-1"></i> Employee</a></li>
-                <li class="nav-item"><a class="nav-link" href="booking.php"><i class="fa-solid fa-calendar-check me-1"></i> Booking</a></li>
+                <!-- <li class="nav-item"><a class="nav-link" href="booking.php"><i class="fa-solid fa-calendar-check me-1"></i> Booking</a></li> -->
                 <li class="nav-item"><a class="nav-link" href="reports.php"><i class="fa-solid fa-chart-line me-1"></i> Reports</a></li>
                 <li class="nav-item"><a class="nav-link text-danger" href="../logout.php"><i class="fa-solid fa-right-from-bracket me-1"></i> Logout</a></li>
             </ul>
@@ -62,11 +62,11 @@
                     <i class="fa-solid fa-users-gear me-2"></i> Employee
                 </a>
             </li>
-            <li class="nav-item mb-2">
+            <!-- <li class="nav-item mb-2">
                 <a href="booking.php" class="nav-link text-dark">
                     <i class="fa-solid fa-calendar-check me-2"></i> Booking
                 </a>
-            </li>
+            </li> -->
             <li class="nav-item mb-2">
                 <a href="reports.php" class="nav-link text-dark">
                     <i class="fa-solid fa-chart-line me-2"></i> Reports

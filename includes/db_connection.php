@@ -1,6 +1,6 @@
 <?php
 $host = 'localhost';     
-$db   = 'catering'; 
+$db   = 'ar'; 
 $user = 'root';           
 $pass = '';               
 
