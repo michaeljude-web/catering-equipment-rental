@@ -54,11 +54,11 @@
                     <i class="fa-solid fa-calendar-check me-2"></i> Bookings
                 </a>
             </li>
-            <li class="nav-item mb-2">
+            <!-- <li class="nav-item mb-2">
                 <a href="customers.php" class="nav-link text-dark">
                     <i class="fa-solid fa-users me-2"></i> Customers
                 </a>
-            </li>
+            </li> -->
             <li class="nav-item mt-auto">
                 <a href="logout.php" class="nav-link text-danger">
                     <i class="fa-solid fa-sign-out-alt me-2"></i>
