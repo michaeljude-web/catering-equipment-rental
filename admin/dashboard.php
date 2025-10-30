@@ -13,63 +13,59 @@ if (!$auth->isLoggedIn()) {
 // Get today's date
 $today = date('Y-m-d');
 $this_month_start = date('Y-m-01');
-$this_month_end = date('Y-m-t');
+$this_month_end = date('Y-m-t 23:59:59');
 
-// Overall Statistics
+// Overall Statistics (UPDATED FOR DATETIME)
 $stats_query = "
     SELECT 
         (SELECT COUNT(*) FROM equipments) as total_equipment,
         (SELECT COUNT(*) FROM packages) as total_packages,
         (SELECT COUNT(*) FROM customer_booking) as total_bookings,
         (SELECT COUNT(*) FROM customer_booking WHERE status = 'Borrowed') as active_bookings,
-        (SELECT COUNT(*) FROM customer_booking WHERE status = 'Overdue') as overdue_bookings,
-        (SELECT SUM(total_amount) FROM customer_booking WHERE MONTH(created_at) = MONTH(CURRENT_DATE)) as monthly_revenue,
-        (SELECT SUM(total_amount) FROM customer_booking) as total_revenue
+        (SELECT COUNT(*) FROM customer_booking WHERE status = 'Borrowed' AND return_date < NOW()) as overdue_bookings,
+        (SELECT COALESCE(SUM(total_amount), 0) FROM customer_booking WHERE DATE(created_at) >= DATE_FORMAT(NOW(), '%Y-%m-01') AND DATE(created_at) <= LAST_DAY(NOW())) as monthly_revenue,
+        (SELECT COALESCE(SUM(total_amount), 0) FROM customer_booking) as total_revenue
 ";
 $stats = $conn->query($stats_query)->fetch_assoc();
 
-// Today's Bookings
+// Today's Bookings (UPDATED)
 $today_bookings_query = "
     SELECT 
         cb.*,
         COUNT(bi.id) as item_count
     FROM customer_booking cb
     LEFT JOIN booking_items bi ON cb.id = bi.booking_id
-    WHERE DATE(cb.created_at) = ?
+    WHERE DATE(cb.created_at) = CURDATE()
     GROUP BY cb.id
     ORDER BY cb.created_at DESC
     LIMIT 5
 ";
-$stmt = $conn->prepare($today_bookings_query);
-$stmt->bind_param("s", $today);
-$stmt->execute();
-$today_bookings = $stmt->get_result();
+$today_bookings = $conn->query($today_bookings_query);
 
-// Upcoming Returns (Next 7 days)
-$next_week = date('Y-m-d', strtotime('+7 days'));
+// Upcoming Returns (Next 7 days) - UPDATED FOR DATETIME
 $upcoming_returns_query = "
     SELECT 
         cb.*,
-        DATEDIFF(cb.return_date, CURRENT_DATE) as days_until_return
+        TIMESTAMPDIFF(DAY, NOW(), cb.return_date) as days_until_return,
+        TIMESTAMPDIFF(HOUR, NOW(), cb.return_date) as hours_until_return
     FROM customer_booking cb
     WHERE cb.status = 'Borrowed'
-    AND cb.return_date BETWEEN CURRENT_DATE AND ?
+    AND cb.return_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)
     ORDER BY cb.return_date ASC
     LIMIT 5
 ";
-$stmt = $conn->prepare($upcoming_returns_query);
-$stmt->bind_param("s", $next_week);
-$stmt->execute();
-$upcoming_returns = $stmt->get_result();
+$upcoming_returns = $conn->query($upcoming_returns_query);
 
-// Overdue Bookings
+// Overdue Bookings - UPDATED FOR DATETIME
 $overdue_query = "
     SELECT 
         cb.*,
-        DATEDIFF(CURRENT_DATE, cb.return_date) as days_overdue
+        TIMESTAMPDIFF(DAY, cb.return_date, NOW()) as days_overdue,
+        TIMESTAMPDIFF(HOUR, cb.return_date, NOW()) as hours_overdue,
+        COALESCE(cb.fine_amount, 0) as fine_amount
     FROM customer_booking cb
-    WHERE cb.status IN ('Borrowed', 'Overdue')
-    AND cb.return_date < CURRENT_DATE
+    WHERE cb.status = 'Borrowed'
+    AND cb.return_date < NOW()
     ORDER BY cb.return_date ASC
     LIMIT 5
 ";
@@ -106,14 +102,14 @@ $recent_activity_query = "
 ";
 $recent_activity = $conn->query($recent_activity_query);
 
-// Monthly Revenue Chart Data (Last 6 months)
+// Monthly Revenue Chart Data (Last 6 months) - UPDATED
 $chart_query = "
     SELECT 
         DATE_FORMAT(created_at, '%b') as month,
         SUM(total_amount) as revenue,
         COUNT(id) as bookings
     FROM customer_booking
-    WHERE created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH)
+    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
     GROUP BY DATE_FORMAT(created_at, '%Y-%m')
     ORDER BY DATE_FORMAT(created_at, '%Y-%m') ASC
 ";
@@ -127,6 +123,7 @@ while ($row = $chart_result->fetch_assoc()) {
 $top_equipment_query = "
     SELECT 
         e.name,
+        e.photo,
         COUNT(bi.id) as times_booked,
         SUM(bi.quantity) as total_qty
     FROM booking_items bi
@@ -143,14 +140,14 @@ $stmt->bind_param("ss", $this_month_start, $this_month_end);
 $stmt->execute();
 $top_equipment = $stmt->get_result();
 
-// Booking Status Distribution
+// Booking Status Distribution - UPDATED
 $status_distribution_query = "
     SELECT 
         status,
         COUNT(*) as count,
         SUM(total_amount) as total
     FROM customer_booking
-    WHERE MONTH(created_at) = MONTH(CURRENT_DATE)
+    WHERE DATE(created_at) >= DATE_FORMAT(NOW(), '%Y-%m-01')
     GROUP BY status
 ";
 $status_distribution = $conn->query($status_distribution_query);
@@ -159,7 +156,7 @@ while ($row = $status_distribution->fetch_assoc()) {
     $status_data[] = $row;
 }
 
-// Category Performance
+// Category Performance - UPDATED
 $category_performance_query = "
     SELECT 
         c.category_name,
@@ -169,7 +166,7 @@ $category_performance_query = "
     INNER JOIN equipments e ON bi.equipment_id = e.id
     INNER JOIN categories c ON e.category_id = c.id
     INNER JOIN customer_booking cb ON bi.booking_id = cb.id
-    WHERE cb.created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 1 MONTH)
+    WHERE cb.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)
     GROUP BY c.id
     ORDER BY revenue DESC
     LIMIT 5
@@ -391,17 +388,18 @@ while ($row = $category_performance->fetch_assoc()) {
                             <table class="table table-hover table-sm mb-0">
                                 <thead>
                                     <tr>
-                                        <th>ID</th>
+                                        <!-- <th>ID</th> -->
                                         <th>Customer</th>
                                         <th>Items</th>
                                         <th>Amount</th>
                                         <th>Status</th>
+                                        <th>Time</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php while ($row = $today_bookings->fetch_assoc()): ?>
                                     <tr>
-                                        <td>#<?php echo $row['id']; ?></td>
+                                      
                                         <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
                                         <td><span class="badge bg-secondary"><?php echo $row['item_count']; ?> items</span></td>
                                         <td>₱<?php echo number_format($row['total_amount'], 2); ?></td>
@@ -414,6 +412,7 @@ while ($row = $category_performance->fetch_assoc()) {
                                                 <?php echo $row['status']; ?>
                                             </span>
                                         </td>
+                                        <td><?php echo date('h:i A', strtotime($row['created_at'])); ?></td>
                                     </tr>
                                     <?php endwhile; ?>
                                 </tbody>
@@ -437,8 +436,8 @@ while ($row = $category_performance->fetch_assoc()) {
                                 <thead>
                                     <tr>
                                         <th>Customer</th>
-                                        <th>Return Date</th>
-                                        <th>Days Left</th>
+                                        <th>Return Date & Time</th>
+                                        <th>Time Left</th>
                                         <th>Amount</th>
                                     </tr>
                                 </thead>
@@ -446,10 +445,16 @@ while ($row = $category_performance->fetch_assoc()) {
                                     <?php while ($row = $upcoming_returns->fetch_assoc()): ?>
                                     <tr>
                                         <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
-                                        <td><?php echo date('M d, Y', strtotime($row['return_date'])); ?></td>
+                                        <td><?php echo date('M d, Y h:i A', strtotime($row['return_date'])); ?></td>
                                         <td>
                                             <span class="badge bg-<?php echo $row['days_until_return'] <= 1 ? 'warning' : 'info'; ?>">
-                                                <?php echo $row['days_until_return']; ?> day(s)
+                                                <?php 
+                                                if ($row['days_until_return'] > 0) {
+                                                    echo $row['days_until_return'] . ' day(s)';
+                                                } else {
+                                                    echo $row['hours_until_return'] . ' hour(s)';
+                                                }
+                                                ?>
                                             </span>
                                         </td>
                                         <td>₱<?php echo number_format($row['total_amount'], 2); ?></td>
@@ -478,7 +483,8 @@ while ($row = $category_performance->fetch_assoc()) {
                                         <th>Customer</th>
                                         <th>Phone</th>
                                         <th>Should Return</th>
-                                        <th>Days Overdue</th>
+                                        <th>Overdue</th>
+                                        <th>Fine</th>
                                         <th>Amount</th>
                                     </tr>
                                 </thead>
@@ -487,12 +493,19 @@ while ($row = $category_performance->fetch_assoc()) {
                                     <tr>
                                         <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
                                         <td><?php echo htmlspecialchars($row['phone'] ?? 'N/A'); ?></td>
-                                        <td><?php echo date('M d, Y', strtotime($row['return_date'])); ?></td>
+                                        <td><?php echo date('M d, Y h:i A', strtotime($row['return_date'])); ?></td>
                                         <td>
                                             <span class="badge bg-danger">
-                                                <?php echo $row['days_overdue']; ?> day(s)
+                                                <?php 
+                                                if ($row['days_overdue'] > 0) {
+                                                    echo $row['days_overdue'] . ' day(s)';
+                                                } else {
+                                                    echo $row['hours_overdue'] . ' hour(s)';
+                                                }
+                                                ?>
                                             </span>
                                         </td>
+                                        <td><strong class="text-danger">₱<?php echo number_format($row['fine_amount'], 2); ?></strong></td>
                                         <td>₱<?php echo number_format($row['total_amount'], 2); ?></td>
                                     </tr>
                                     <?php endwhile; ?>
@@ -526,7 +539,7 @@ while ($row = $category_performance->fetch_assoc()) {
                             </div>
                             <div class="progress progress-thin">
                                 <div class="progress-bar bg-<?php echo $row['stock'] == 0 ? 'danger' : 'warning'; ?>" 
-                                     style="width: <?php echo ($row['stock'] / $row['quantity']) * 100; ?>%"></div>
+                                     style="width: <?php echo $row['quantity'] > 0 ? ($row['stock'] / $row['quantity']) * 100 : 0; ?>%"></div>
                             </div>
                         </div>
                         <?php endwhile; ?>
@@ -583,7 +596,7 @@ const revenueChart = new Chart(revenueCtx, {
     data: {
         labels: <?php echo json_encode(array_column($chart_data, 'month')); ?>,
         datasets: [{
-            label: 'Revenue',
+            label: 'Revenue (₱)',
             data: <?php echo json_encode(array_column($chart_data, 'revenue')); ?>,
             borderColor: 'rgb(75, 192, 192)',
             backgroundColor: 'rgba(75, 192, 192, 0.1)',
@@ -611,11 +624,19 @@ const revenueChart = new Chart(revenueCtx, {
         scales: {
             y: {
                 beginAtZero: true,
-                position: 'left'
+                position: 'left',
+                title: {
+                    display: true,
+                    text: 'Revenue (₱)'
+                }
             },
             y1: {
                 beginAtZero: true,
                 position: 'right',
+                title: {
+                    display: true,
+                    text: 'Bookings'
+                },
                 grid: {
                     drawOnChartArea: false
                 }
@@ -658,7 +679,7 @@ const categoryChart = new Chart(categoryCtx, {
     data: {
         labels: <?php echo json_encode(array_column($category_data, 'category_name')); ?>,
         datasets: [{
-            label: 'Revenue',
+            label: 'Revenue (₱)',
             data: <?php echo json_encode(array_column($category_data, 'revenue')); ?>,
             backgroundColor: 'rgba(54, 162, 235, 0.8)',
             borderColor: 'rgba(54, 162, 235, 1)',
@@ -718,7 +739,10 @@ const topEquipmentChart = new Chart(topEquipmentCtx, {
         },
         scales: {
             y: {
-                beginAtZero: true
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
             }
         }
     }
