@@ -113,3 +113,8 @@ CREATE TABLE staff_info (
 
 
 
+ALTER TABLE customer_booking 
+  ADD COLUMN actual_return_date DATETIME NULL,
+  ADD COLUMN fine_amount DECIMAL(10,2) DEFAULT 0.00,
+  ADD COLUMN damage_fee DECIMAL(10,2) DEFAULT 0.00,
+  ADD COLUMN damage_notes TEXT NULL;
