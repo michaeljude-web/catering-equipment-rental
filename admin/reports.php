@@ -14,146 +14,323 @@ if (!$auth->isLoggedIn()) {
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 
-// Summary Statistics
-$stats_query = "
+// Daily Movement - Borrowing Activity
+$daily_borrowing_query = "
     SELECT 
-        COUNT(DISTINCT cb.id) as total_bookings,
-        SUM(cb.total_amount) as total_revenue,
-        COUNT(DISTINCT CASE WHEN cb.status = 'Borrowed' THEN cb.id END) as active_bookings,
-        COUNT(DISTINCT CASE WHEN cb.status = 'Returned' THEN cb.id END) as completed_bookings,
-        COUNT(DISTINCT CASE WHEN cb.status = 'Overdue' THEN cb.id END) as overdue_bookings,
-        COUNT(DISTINCT CASE WHEN cb.status = 'Cancelled' THEN cb.id END) as cancelled_bookings
-    FROM customer_booking cb
-    WHERE cb.created_at BETWEEN ? AND ?
-";
-$stmt = $conn->prepare($stats_query);
-$stmt->bind_param("ss", $start_date, $end_date);
-$stmt->execute();
-$stats = $stmt->get_result()->fetch_assoc();
-
-// Popular Equipment Report
-$popular_equipment_query = "
-    SELECT 
-        e.name,
-        c.category_name,
-        COUNT(bi.id) as times_booked,
-        SUM(bi.quantity) as total_quantity_booked,
-        SUM(bi.price * bi.quantity) as total_revenue
-    FROM booking_items bi
-    INNER JOIN equipments e ON bi.equipment_id = e.id
-    INNER JOIN categories c ON e.category_id = c.id
-    INNER JOIN customer_booking cb ON bi.booking_id = cb.id
-    WHERE cb.created_at BETWEEN ? AND ?
-    AND bi.equipment_id IS NOT NULL
-    GROUP BY e.id, e.name, c.category_name
-    ORDER BY times_booked DESC
-    LIMIT 10
-";
-$stmt = $conn->prepare($popular_equipment_query);
-$stmt->bind_param("ss", $start_date, $end_date);
-$stmt->execute();
-$popular_equipment = $stmt->get_result();
-
-// Popular Packages Report
-$popular_packages_query = "
-    SELECT 
-        p.package_name,
-        COUNT(bi.id) as times_booked,
-        SUM(bi.quantity) as total_quantity_booked,
-        SUM(bi.price * bi.quantity) as total_revenue
-    FROM booking_items bi
-    INNER JOIN packages p ON bi.package_id = p.id
-    INNER JOIN customer_booking cb ON bi.booking_id = cb.id
-    WHERE cb.created_at BETWEEN ? AND ?
-    AND bi.package_id IS NOT NULL
-    GROUP BY p.id, p.package_name
-    ORDER BY times_booked DESC
-    LIMIT 10
-";
-$stmt = $conn->prepare($popular_packages_query);
-$stmt->bind_param("ss", $start_date, $end_date);
-$stmt->execute();
-$popular_packages = $stmt->get_result();
-
-// Revenue by Month
-$monthly_revenue_query = "
-    SELECT 
-        DATE_FORMAT(created_at, '%Y-%m') as month,
-        COUNT(id) as bookings,
-        SUM(total_amount) as revenue
+        DATE(borrow_date) as activity_date,
+        COUNT(*) as total_borrowed,
+        SUM(total_amount) as daily_revenue,
+        GROUP_CONCAT(DISTINCT customer_name SEPARATOR ', ') as customers
     FROM customer_booking
-    WHERE created_at BETWEEN ? AND ?
-    GROUP BY DATE_FORMAT(created_at, '%Y-%m')
-    ORDER BY month DESC
+    WHERE DATE(borrow_date) BETWEEN ? AND ?
+    GROUP BY DATE(borrow_date)
+    ORDER BY activity_date DESC
 ";
-$stmt = $conn->prepare($monthly_revenue_query);
+$stmt = $conn->prepare($daily_borrowing_query);
 $stmt->bind_param("ss", $start_date, $end_date);
 $stmt->execute();
-$monthly_revenue = $stmt->get_result();
+$daily_borrowing = $stmt->get_result();
 
-// Recent Bookings
-$recent_bookings_query = "
+// Daily Movement - Return Activity
+$daily_returns_query = "
     SELECT 
-        cb.id,
+        DATE(actual_return_date) as return_date,
+        COUNT(*) as total_returned,
+        SUM(total_amount) as rental_amount,
+        COALESCE(SUM(fine_amount), 0) as total_fines,
+        COALESCE(SUM(damage_fee), 0) as total_damages,
+        GROUP_CONCAT(DISTINCT customer_name SEPARATOR ', ') as customers
+    FROM customer_booking
+    WHERE actual_return_date IS NOT NULL
+    AND DATE(actual_return_date) BETWEEN ? AND ?
+    GROUP BY DATE(actual_return_date)
+    ORDER BY return_date DESC
+";
+$stmt = $conn->prepare($daily_returns_query);
+$stmt->bind_param("ss", $start_date, $end_date);
+$stmt->execute();
+$daily_returns = $stmt->get_result();
+
+// Fines & Damages Report
+$fines_damages_query = "
+    SELECT 
         cb.customer_name,
+        cb.phone,
+        cb.return_date,
+        cb.actual_return_date,
+        cb.total_amount,
+        cb.fine_amount,
+        cb.damage_fee,
+        cb.damage_notes,
+        TIMESTAMPDIFF(HOUR, cb.return_date, cb.actual_return_date) as hours_late
+    FROM customer_booking cb
+    WHERE (cb.fine_amount > 0 OR cb.damage_fee > 0)
+    AND DATE(cb.actual_return_date) BETWEEN ? AND ?
+    ORDER BY cb.actual_return_date DESC
+";
+$stmt = $conn->prepare($fines_damages_query);
+$stmt->bind_param("ss", $start_date, $end_date);
+$stmt->execute();
+$fines_damages = $stmt->get_result();
+
+// Currently Borrowed (Active Rentals)
+$active_rentals_query = "
+    SELECT 
+        cb.customer_name,
+        cb.phone,
         cb.borrow_date,
         cb.return_date,
         cb.total_amount,
-        cb.status,
-        cb.created_at
+        CASE 
+            WHEN cb.return_date < NOW() THEN 'Overdue'
+            ELSE 'Active'
+        END as rental_status,
+        TIMESTAMPDIFF(HOUR, NOW(), cb.return_date) as hours_remaining,
+        COALESCE(cb.fine_amount, 0) as current_fine
     FROM customer_booking cb
-    WHERE cb.created_at BETWEEN ? AND ?
-    ORDER BY cb.created_at DESC
-    LIMIT 15
+    WHERE cb.status = 'Borrowed'
+    ORDER BY cb.return_date ASC
 ";
-$stmt = $conn->prepare($recent_bookings_query);
+$active_rentals = $conn->query($active_rentals_query);
+
+// Customer Activity Report
+$customer_activity_query = "
+    SELECT 
+        customer_name,
+        COUNT(*) as total_bookings,
+        SUM(total_amount) as total_spent,
+        COALESCE(SUM(fine_amount), 0) as total_fines,
+        COALESCE(SUM(damage_fee), 0) as total_damages,
+        MAX(created_at) as last_booking
+    FROM customer_booking
+    WHERE DATE(created_at) BETWEEN ? AND ?
+    GROUP BY customer_name
+    ORDER BY total_bookings DESC
+    LIMIT 10
+";
+$stmt = $conn->prepare($customer_activity_query);
 $stmt->bind_param("ss", $start_date, $end_date);
 $stmt->execute();
-$recent_bookings = $stmt->get_result();
-
-// Equipment Stock Status
-$stock_status_query = "
-    SELECT 
-        e.name,
-        c.category_name,
-        e.quantity as total_quantity,
-        e.stock as available_stock,
-        (e.quantity - e.stock) as currently_borrowed
-    FROM equipments e
-    INNER JOIN categories c ON e.category_id = c.id
-    WHERE e.stock < 5 OR (e.quantity - e.stock) > 0
-    ORDER BY e.stock ASC
-";
-$stock_status = $conn->query($stock_status_query);
+$customer_activity = $stmt->get_result();
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Reports - Catering System</title>
+<title>Reports & Daily Movement - Catering System</title>
 <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
 <link rel="stylesheet" href="../assets/font/css/all.min.css">
 <style>
-    .stat-card {
-        border-left: 4px solid;
-        transition: transform 0.2s;
+    .activity-date {
+        font-weight: bold;
+        color: #0d6efd;
     }
-    .stat-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    .movement-card {
+        border-left: 3px solid;
+        margin-bottom: 10px;
     }
-    .stat-icon {
-        font-size: 2rem;
-        opacity: 0.7;
-    }
-    .table-responsive {
-        max-height: 400px;
-        overflow-y: auto;
-    }
+    .movement-borrow { border-left-color: #0d6efd; }
+    .movement-return { border-left-color: #198754; }
+    
+    /* PRINT STYLES */
     @media print {
-        .no-print { display: none; }
-        .stat-card { page-break-inside: avoid; }
+        @page {
+            margin: 15mm;
+            size: A4 portrait;
+        }
+        
+        /* Hide screen-only elements */
+        .no-print, 
+        .sidebar,
+        nav,
+        button,
+        .btn,
+        .card-header i {
+            display: none !important;
+        }
+        
+        body {
+            background: white !important;
+            color: black !important;
+            font-size: 11pt;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            line-height: 1.4;
+        }
+        
+        main {
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+        }
+        
+        /* Company Header */
+        .print-company-header {
+            display: block !important;
+            text-align: center;
+            border-bottom: 3px solid black;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .print-company-header h1 {
+            font-size: 24pt;
+            font-weight: bold;
+            margin: 0 0 5px 0;
+            letter-spacing: 1px;
+        }
+        
+        .print-company-header .report-title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin: 10px 0 5px 0;
+        }
+        
+        .print-company-header .report-info {
+            font-size: 10pt;
+            margin: 3px 0;
+        }
+        
+        /* Remove all colors - black and white only */
+        * {
+            background: white !important;
+            color: black !important;
+            border-color: #333 !important;
+            box-shadow: none !important;
+        }
+        
+        /* Clean table borders */
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+            page-break-inside: auto;
+            font-size: 9pt;
+        }
+        
+        th, td {
+            border: 1px solid #333 !important;
+            padding: 6px 8px !important;
+            background: white !important;
+            color: black !important;
+            text-align: left;
+        }
+        
+        th {
+            font-weight: bold;
+            background: #e8e8e8 !important;
+            font-size: 10pt;
+        }
+        
+        tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+        }
+        
+        /* Card styles for print */
+        .card {
+            border: 2px solid black !important;
+            margin-bottom: 20px;
+            page-break-inside: avoid;
+            background: white !important;
+        }
+        
+        .card-header {
+            background: #e8e8e8 !important;
+            color: black !important;
+            border-bottom: 2px solid black !important;
+            padding: 10px !important;
+            font-weight: bold;
+            font-size: 12pt;
+            text-align: left;
+        }
+        
+        .card-body {
+            padding: 15px !important;
+        }
+        
+        /* Movement cards - convert to table format */
+        .movement-card {
+            border: 1px solid #333 !important;
+            margin-bottom: 10px;
+            padding: 10px !important;
+            page-break-inside: avoid;
+        }
+        
+        .movement-card .activity-date {
+            font-size: 11pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: black !important;
+        }
+        
+        /* Text formatting */
+        h1, h2, h3, h4, h5, h6 {
+            color: black !important;
+        }
+        
+        h5 {
+            font-size: 12pt;
+            margin: 0;
+        }
+        
+        .badge {
+            border: 1px solid black !important;
+            padding: 2px 6px;
+            background: white !important;
+            color: black !important;
+            display: inline-block;
+        }
+        
+        /* Remove row/col structure for print */
+        .row {
+            display: block !important;
+            margin: 0 !important;
+        }
+        
+        .col-lg-6 {
+            width: 100% !important;
+            display: block !important;
+            float: none !important;
+            margin-bottom: 20px !important;
+        }
+        
+        /* Section breaks */
+        .section-break {
+            page-break-before: always;
+        }
+        
+        /* Compact spacing */
+        small {
+            font-size: 8pt;
+        }
+        
+        p {
+            margin: 3px 0;
+        }
+        
+        /* Hide overflow for print */
+        div[style*="overflow-y"] {
+            max-height: none !important;
+            overflow: visible !important;
+        }
+        
+        /* Strong emphasis */
+        strong {
+            font-weight: bold;
+        }
+        
+        /* Footer */
+        .print-footer {
+            display: block !important;
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 10px;
+            border-top: 1px solid #333;
+            font-size: 9pt;
+        }
     }
 </style>
 </head>
@@ -161,9 +338,17 @@ $stock_status = $conn->query($stock_status_query);
 
 <?php include '../includes/admin_sidebar.php'; ?>
     <main class="flex-grow-1 p-4">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1 class="h3 mb-0">Reports & Analytics</h1>
-            <button onclick="window.print()" class="btn btn-primary no-print">
+        <!-- Print Company Header (hidden on screen) -->
+        <div class="print-company-header" style="display: none;">
+            <h1>EL CIELO CATERING SERVICES</h1>
+            <div class="report-title">DAILY MOVEMENT & OPERATIONS REPORT</div>
+            <div class="report-info"><strong>Report Period:</strong> <?php echo date('F d, Y', strtotime($start_date)); ?> to <?php echo date('F d, Y', strtotime($end_date)); ?></div>
+            <div class="report-info"><strong>Generated on:</strong> <?php echo date('F d, Y - h:i A'); ?></div>
+        </div>
+        
+        <div class="d-flex justify-content-between align-items-center mb-4 no-print">
+            <h1 class="h3 mb-0"><i class="fas fa-chart-bar"></i> Reports & Daily Movement</h1>
+            <button onclick="window.print()" class="btn btn-primary">
                 <i class="fas fa-print"></i> Print Report
             </button>
         </div>
@@ -172,196 +357,143 @@ $stock_status = $conn->query($stock_status_query);
         <div class="card mb-4 no-print">
             <div class="card-body">
                 <form method="GET" class="row g-3">
-                    <div class="col-md-5">
-                        <label class="form-label">Start Date</label>
-                        <input type="date" name="start_date" class="form-control" value="<?php echo $start_date; ?>">
+                    <div class="col-md-4">
+                        <label class="form-label"><i class="fas fa-calendar"></i> Start Date</label>
+                        <input type="date" name="start_date" class="form-control" value="<?php echo $start_date; ?>" required>
                     </div>
-                    <div class="col-md-5">
-                        <label class="form-label">End Date</label>
-                        <input type="date" name="end_date" class="form-control" value="<?php echo $end_date; ?>">
+                    <div class="col-md-4">
+                        <label class="form-label"><i class="fas fa-calendar"></i> End Date</label>
+                        <input type="date" name="end_date" class="form-control" value="<?php echo $end_date; ?>" required>
                     </div>
-                    <div class="col-md-2 d-flex align-items-end">
+                    <div class="col-md-4 d-flex align-items-end">
                         <button type="submit" class="btn btn-success w-100">
-                            <i class="fas fa-filter"></i> Filter
+                            <i class="fas fa-filter"></i> Generate Report
                         </button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <!-- Summary Statistics -->
+        <!-- DAILY MOVEMENT SECTION -->
         <div class="row mb-4">
-            <div class="col-md-4 mb-3">
-                <div class="card stat-card border-primary">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-1">Total Revenue</h6>
-                                <h3 class="mb-0">₱<?php echo number_format($stats['total_revenue'] ?? 0, 2); ?></h3>
-                            </div>
-                            <i class="fas fa-peso-sign stat-icon text-primary"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card stat-card border-success">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-1">Total Bookings</h6>
-                                <h3 class="mb-0"><?php echo $stats['total_bookings'] ?? 0; ?></h3>
-                            </div>
-                            <i class="fas fa-calendar-check stat-icon text-success"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card stat-card border-info">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-1">Active Bookings</h6>
-                                <h3 class="mb-0"><?php echo $stats['active_bookings'] ?? 0; ?></h3>
-                            </div>
-                            <i class="fas fa-clock stat-icon text-info"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stat-card border-success">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-1">Completed</h6>
-                                <h3 class="mb-0"><?php echo $stats['completed_bookings'] ?? 0; ?></h3>
-                            </div>
-                            <i class="fas fa-check-circle stat-icon text-success"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stat-card border-warning">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-1">Overdue</h6>
-                                <h3 class="mb-0"><?php echo $stats['overdue_bookings'] ?? 0; ?></h3>
-                            </div>
-                            <i class="fas fa-exclamation-triangle stat-icon text-warning"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stat-card border-danger">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-muted mb-1">Cancelled</h6>
-                                <h3 class="mb-0"><?php echo $stats['cancelled_bookings'] ?? 0; ?></h3>
-                            </div>
-                            <i class="fas fa-times-circle stat-icon text-danger"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Charts Row -->
-        <div class="row mb-4">
-            <!-- Monthly Revenue -->
-            <div class="col-md-6 mb-3">
-                <div class="card">
+            <!-- Daily Borrowing Activity -->
+            <div class="col-lg-6 mb-3">
+                <div class="card border-0 shadow-sm">
                     <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0"><i class="fas fa-chart-line"></i> Monthly Revenue</h5>
+                        <h5 class="mb-0"><i class="fas fa-arrow-down"></i> Daily Borrowing Activity</h5>
                     </div>
                     <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Month</th>
-                                        <th>Bookings</th>
-                                        <th class="text-end">Revenue</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php while ($row = $monthly_revenue->fetch_assoc()): ?>
-                                    <tr>
-                                        <td><?php echo date('F Y', strtotime($row['month'] . '-01')); ?></td>
-                                        <td><?php echo $row['bookings']; ?></td>
-                                        <td class="text-end">₱<?php echo number_format($row['revenue'], 2); ?></td>
-                                    </tr>
-                                    <?php endwhile; ?>
-                                </tbody>
-                            </table>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <?php if ($daily_borrowing->num_rows > 0): ?>
+                            <?php while ($row = $daily_borrowing->fetch_assoc()): ?>
+                            <div class="movement-card movement-borrow card mb-2">
+                                <div class="card-body p-3">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div style="flex: 1;">
+                                            <div class="activity-date mb-1">
+                                                <i class="fas fa-calendar-day"></i> 
+                                                <?php echo date('l, F d, Y', strtotime($row['activity_date'])); ?>
+                                            </div>
+                                            <p class="mb-1"><strong><?php echo $row['total_borrowed']; ?></strong> booking(s) borrowed</p>
+                                            <p class="mb-0 text-muted small">
+                                                <i class="fas fa-users"></i> <?php echo htmlspecialchars($row['customers']); ?>
+                                            </p>
+                                        </div>
+                                        <div class="text-end" style="min-width: 100px;">
+                                            <h5 class="text-primary mb-0">₱<?php echo number_format($row['daily_revenue'], 2); ?></h5>
+                                            <small class="text-muted">revenue</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endwhile; ?>
+                            <?php else: ?>
+                            <p class="text-muted text-center">No borrowing activity in this period.</p>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Popular Equipment -->
-            <div class="col-md-6 mb-3">
-                <div class="card">
+            <!-- Daily Return Activity -->
+            <div class="col-lg-6 mb-3">
+                <div class="card border-0 shadow-sm">
                     <div class="card-header bg-success text-white">
-                        <h5 class="mb-0"><i class="fas fa-star"></i> Popular Equipment</h5>
+                        <h5 class="mb-0"><i class="fas fa-arrow-up"></i> Daily Return Activity</h5>
                     </div>
                     <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Equipment</th>
-                                        <th>Times Booked</th>
-                                        <th class="text-end">Revenue</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php while ($row = $popular_equipment->fetch_assoc()): ?>
-                                    <tr>
-                                        <td>
-                                            <strong><?php echo htmlspecialchars($row['name']); ?></strong><br>
-                                            <small class="text-muted"><?php echo htmlspecialchars($row['category_name']); ?></small>
-                                        </td>
-                                        <td><?php echo $row['times_booked']; ?>x</td>
-                                        <td class="text-end">₱<?php echo number_format($row['total_revenue'], 2); ?></td>
-                                    </tr>
-                                    <?php endwhile; ?>
-                                </tbody>
-                            </table>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <?php if ($daily_returns->num_rows > 0): ?>
+                            <?php while ($row = $daily_returns->fetch_assoc()): ?>
+                            <div class="movement-card movement-return card mb-2">
+                                <div class="card-body p-3">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div style="flex: 1;">
+                                            <div class="activity-date mb-1" style="color: #198754;">
+                                                <i class="fas fa-calendar-check"></i> 
+                                                <?php echo date('l, F d, Y', strtotime($row['return_date'])); ?>
+                                            </div>
+                                            <p class="mb-1"><strong><?php echo $row['total_returned']; ?></strong> booking(s) returned</p>
+                                            <p class="mb-0 text-muted small">
+                                                <i class="fas fa-users"></i> <?php echo htmlspecialchars($row['customers']); ?>
+                                            </p>
+                                        </div>
+                                        <div class="text-end" style="min-width: 120px;">
+                                            <h6 class="mb-0">₱<?php echo number_format($row['rental_amount'], 2); ?></h6>
+                                            <?php if ($row['total_fines'] > 0): ?>
+                                            <small class="text-warning d-block">+₱<?php echo number_format($row['total_fines'], 2); ?> fines</small>
+                                            <?php endif; ?>
+                                            <?php if ($row['total_damages'] > 0): ?>
+                                            <small class="text-danger d-block">+₱<?php echo number_format($row['total_damages'], 2); ?> damages</small>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endwhile; ?>
+                            <?php else: ?>
+                            <p class="text-muted text-center">No return activity in this period.</p>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Popular Packages -->
+        <!-- Fines & Damages Report -->
+        <?php if ($fines_damages->num_rows > 0): ?>
         <div class="card mb-4">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0"><i class="fas fa-box"></i> Popular Packages</h5>
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Fines & Damages Report</h5>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table">
+                    <table class="table table-hover table-sm">
                         <thead>
                             <tr>
-                                <th>Package Name</th>
-                                <th>Times Booked</th>
-                                <th>Total Quantity</th>
-                                <th class="text-end">Total Revenue</th>
+                                <th>Customer</th>
+                                <th>Phone</th>
+                                <th>Should Return</th>
+                                <th>Actually Returned</th>
+                                <th>Hours Late</th>
+                                <th>Rental</th>
+                                <th>Fine</th>
+                                <th>Damage</th>
+                                <th>Notes</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while ($row = $popular_packages->fetch_assoc()): ?>
+                            <?php while ($row = $fines_damages->fetch_assoc()): ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($row['package_name']); ?></td>
-                                <td><?php echo $row['times_booked']; ?>x</td>
-                                <td><?php echo $row['total_quantity']; ?></td>
-                                <td class="text-end">₱<?php echo number_format($row['total_revenue'], 2); ?></td>
+                                <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
+                                <td><?php echo htmlspecialchars($row['phone'] ?? 'N/A'); ?></td>
+                                <td><?php echo date('M d, h:i A', strtotime($row['return_date'])); ?></td>
+                                <td><?php echo date('M d, h:i A', strtotime($row['actual_return_date'])); ?></td>
+                                <td><span class="badge"><?php echo $row['hours_late']; ?>h</span></td>
+                                <td>₱<?php echo number_format($row['total_amount'], 2); ?></td>
+                                <td><strong>₱<?php echo number_format($row['fine_amount'], 2); ?></strong></td>
+                                <td><strong>₱<?php echo number_format($row['damage_fee'], 2); ?></strong></td>
+                                <td><?php echo htmlspecialchars($row['damage_notes'] ?? '-'); ?></td>
                             </tr>
                             <?php endwhile; ?>
                         </tbody>
@@ -369,40 +501,57 @@ $stock_status = $conn->query($stock_status_query);
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
-        <!-- Equipment Stock Status -->
+        <!-- Currently Active Rentals -->
+        <?php if ($active_rentals->num_rows > 0): ?>
         <div class="card mb-4">
-            <div class="card-header bg-warning text-dark">
-                <h5 class="mb-0"><i class="fas fa-warehouse"></i> Equipment Stock Status (Low Stock / Currently Borrowed)</h5>
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-clock"></i> Currently Active Rentals</h5>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table">
+                    <table class="table table-hover table-sm">
                         <thead>
                             <tr>
-                                <th>Equipment</th>
-                                <th>Category</th>
-                                <th>Total Quantity</th>
-                                <th>Available</th>
+                                <th>Customer</th>
+                                <th>Phone</th>
                                 <th>Borrowed</th>
+                                <th>Should Return</th>
+                                <th>Time Remaining</th>
+                                <th>Amount</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while ($row = $stock_status->fetch_assoc()): ?>
+                            <?php while ($row = $active_rentals->fetch_assoc()): ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($row['name']); ?></td>
-                                <td><?php echo htmlspecialchars($row['category_name']); ?></td>
-                                <td><?php echo $row['total_quantity']; ?></td>
-                                <td><?php echo $row['available_stock']; ?></td>
-                                <td><?php echo $row['currently_borrowed']; ?></td>
+                                <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
+                                <td><?php echo htmlspecialchars($row['phone'] ?? 'N/A'); ?></td>
+                                <td><?php echo date('M d, h:i A', strtotime($row['borrow_date'])); ?></td>
+                                <td><?php echo date('M d, h:i A', strtotime($row['return_date'])); ?></td>
                                 <td>
-                                    <?php if ($row['available_stock'] == 0): ?>
-                                        <span class="badge bg-danger">Out of Stock</span>
-                                    <?php elseif ($row['available_stock'] < 5): ?>
-                                        <span class="badge bg-warning">Low Stock</span>
+                                    <?php 
+                                    $hours = $row['hours_remaining'];
+                                    if ($hours < 0) {
+                                        echo '<span class="badge">OVERDUE</span>';
+                                    } elseif ($hours < 24) {
+                                        echo '<span class="badge">' . $hours . ' hours</span>';
+                                    } else {
+                                        $days = floor($hours / 24);
+                                        echo '<span class="badge">' . $days . ' day(s)</span>';
+                                    }
+                                    ?>
+                                </td>
+                                <td>₱<?php echo number_format($row['total_amount'], 2); ?></td>
+                                <td>
+                                    <?php if ($row['rental_status'] == 'Overdue'): ?>
+                                        <span class="badge">Overdue</span>
+                                        <?php if ($row['current_fine'] > 0): ?>
+                                        <br><small>Fine: ₱<?php echo number_format($row['current_fine'], 2); ?></small>
+                                        <?php endif; ?>
                                     <?php else: ?>
-                                        <span class="badge bg-info">In Use</span>
+                                        <span class="badge">Active</span>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -412,54 +561,47 @@ $stock_status = $conn->query($stock_status_query);
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
-        <!-- Recent Bookings -->
+        <!-- Top Customers -->
         <div class="card mb-4">
             <div class="card-header bg-dark text-white">
-                <h5 class="mb-0"><i class="fas fa-history"></i> Recent Bookings</h5>
+                <h5 class="mb-0"><i class="fas fa-users"></i> Top Customers</h5>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-hover table-sm">
                         <thead>
                             <tr>
-                                <th>ID</th>
-                                <th>Customer</th>
-                                <th>Borrow Date</th>
-                                <th>Return Date</th>
-                                <th class="text-end">Amount</th>
-                                <th>Status</th>
-                                <th>Booked On</th>
+                                <th>Customer Name</th>
+                                <th>Total Bookings</th>
+                                <th>Total Spent</th>
+                                <th>Fines Paid</th>
+                                <th>Damages</th>
+                                <th>Last Booking</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while ($row = $recent_bookings->fetch_assoc()): ?>
+                            <?php while ($row = $customer_activity->fetch_assoc()): ?>
                             <tr>
-                                <td>#<?php echo $row['id']; ?></td>
-                                <td><?php echo htmlspecialchars($row['customer_name']); ?></td>
-                                <td><?php echo date('M d, Y', strtotime($row['borrow_date'])); ?></td>
-                                <td><?php echo date('M d, Y', strtotime($row['return_date'])); ?></td>
-                                <td class="text-end">₱<?php echo number_format($row['total_amount'], 2); ?></td>
-                                <td>
-                                    <?php
-                                    $badge_class = [
-                                        'Borrowed' => 'info',
-                                        'Returned' => 'success',
-                                        'Overdue' => 'warning',
-                                        'Cancelled' => 'danger'
-                                    ];
-                                    ?>
-                                    <span class="badge bg-<?php echo $badge_class[$row['status']] ?? 'secondary'; ?>">
-                                        <?php echo $row['status']; ?>
-                                    </span>
-                                </td>
-                                <td><?php echo date('M d, Y', strtotime($row['created_at'])); ?></td>
+                                <td><strong><?php echo htmlspecialchars($row['customer_name']); ?></strong></td>
+                                <td><span class="badge"><?php echo $row['total_bookings']; ?>x</span></td>
+                                <td>₱<?php echo number_format($row['total_spent'], 2); ?></td>
+                                <td>₱<?php echo number_format($row['total_fines'], 2); ?></td>
+                                <td>₱<?php echo number_format($row['total_damages'], 2); ?></td>
+                                <td><?php echo date('M d, Y', strtotime($row['last_booking'])); ?></td>
                             </tr>
                             <?php endwhile; ?>
                         </tbody>
                     </table>
                 </div>
             </div>
+        </div>
+
+        <!-- Print Footer (hidden on screen) -->
+        <div class="print-footer" style="display: none;">
+            <p>This is a system-generated report from El Cielo Catering Services</p>
+            <p>Printed on: <?php echo date('F d, Y - h:i A'); ?></p>
         </div>
 
     </main>
