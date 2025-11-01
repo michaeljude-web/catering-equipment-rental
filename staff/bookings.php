@@ -23,14 +23,12 @@ if (isset($_SESSION['staff_id'])) {
     $stmt->close();
 }
 
-// Update overdue fines before displaying
 $conn->query("UPDATE customer_booking 
               SET fine_amount = TIMESTAMPDIFF(HOUR, return_date, NOW()) * 100 
               WHERE status = 'Borrowed' 
               AND NOW() > return_date 
               AND TIMESTAMPDIFF(HOUR, return_date, NOW()) > 0");
 
-// Fetch only ACTIVE bookings (exclude 'Returned' and 'Overdue')
 $bookings_query = "SELECT id, customer_name, email, phone, address, borrow_date, return_date, 
                    actual_return_date, total_amount, fine_amount, damage_fee, damage_notes,
                    status, created_at,
@@ -51,7 +49,6 @@ if ($bookings_result) {
     }
 }
 
-// Fetch equipments
 $equipments = [];
 $equip_query = "SELECT e.id, e.name, e.price, e.category_id, e.stock, e.quantity, c.category_name 
                 FROM equipments e 
@@ -64,7 +61,6 @@ if ($equip_result) {
     }
 }
 
-// Get packages
 $packages = [];
 $pkg_query = "SELECT p.id, p.package_name, p.price,
               GROUP_CONCAT(CONCAT(e.name, ' (', pi.quantity, ')') SEPARATOR ', ') as items
@@ -96,6 +92,13 @@ if ($pkg_result) {
         border-radius: 5px;
         background: #f8f9fa;
     }
+    .damaged-item {
+        border: 1px solid #dc3545;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+        background: #fff;
+    }
     #bookingTypeButtons .btn {
         min-width: 150px;
         color: white;
@@ -107,7 +110,6 @@ if ($pkg_result) {
     #packageBtn:hover { background-color: #157347; }
     #mixedBtn { background-color: #6f42c1; }
     #mixedBtn:hover { background-color: #5a32a3; }
-  
     .status-badge {
         padding: 5px 10px;
         border-radius: 4px;
@@ -116,13 +118,11 @@ if ($pkg_result) {
     }
     .status-Borrowed { background-color: #0d6efd; color: white; }
     .status-Overdue { background-color: #dc3545; color: white; }
-    
     .booking-row {
         cursor: pointer;
         transition: background-color 0.2s;
     }
     .booking-row:hover { background-color: #f8f9fa; }
-    
     .timer-badge {
         padding: 5px 10px;
         border-radius: 4px;
@@ -230,7 +230,6 @@ if ($pkg_result) {
     </main>
 </div>
 
-<!-- Add Booking Modal -->
 <div class="modal fade" id="addBookingModal" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
@@ -324,7 +323,6 @@ if ($pkg_result) {
     </div>
 </div>
 
-<!-- Return/Settle Payment Modal -->
 <div class="modal fade" id="returnModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -352,26 +350,32 @@ if ($pkg_result) {
                         <label class="form-label">Any Damages?</label>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="has_damage" id="no_damage" value="0" checked onchange="toggleDamageFields()">
-                            <label class="form-check-label" for="no_damage">
-                                No Damage
-                            </label>
+                            <label class="form-check-label" for="no_damage">No Damage</label>
                         </div>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="has_damage" id="has_damage" value="1" onchange="toggleDamageFields()">
-                            <label class="form-check-label" for="has_damage">
-                                Yes, Has Damage
-                            </label>
+                            <label class="form-check-label" for="has_damage">Yes, Has Damage</label>
                         </div>
                     </div>
 
                     <div id="damageFields" style="display: none;">
                         <div class="mb-3">
-                            <label for="damage_fee" class="form-label">Damage Fee (₱)</label>
+                            <label class="form-label fw-bold">Select Damaged Equipment</label>
+                            <div id="damagedEquipmentList" class="border rounded p-3 bg-light">
+                                <p class="text-muted mb-2"><small>Loading equipment from this booking...</small></p>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-danger mt-2" onclick="addDamagedEquipment()">
+                                <i class="fas fa-plus"></i> Add Damaged Item
+                            </button>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="damage_fee" class="form-label">Total Damage Fee (₱)</label>
                             <input type="number" class="form-control" name="damage_fee" id="damage_fee" min="0" step="0.01" value="0" onchange="updateTotalPayment()">
                         </div>
                         <div class="mb-3">
-                            <label for="damage_notes" class="form-label">Damage Description</label>
-                            <textarea class="form-control" name="damage_notes" id="damage_notes" rows="3" placeholder="Describe the damage..."></textarea>
+                            <label for="damage_notes" class="form-label">Overall Damage Description</label>
+                            <textarea class="form-control" name="damage_notes" id="damage_notes" rows="3" placeholder="Describe the overall damage situation..."></textarea>
                         </div>
                     </div>
 
@@ -389,7 +393,6 @@ if ($pkg_result) {
     </div>
 </div>
 
-<!-- View Booking Modal -->
 <div class="modal fade" id="viewBookingModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -417,6 +420,8 @@ let equipmentCounter = 0;
 let packageCounter = 0;
 let currentBookingType = null;
 let currentBookingData = null;
+let damagedEquipmentCounter = 0;
+let bookingEquipments = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     const now = new Date();
@@ -511,16 +516,22 @@ function addPackage() {
     
     let optionsHTML = '<option value="">-- Select Package --</option>';
     packages.forEach(pkg => {
-        optionsHTML += `<option value="${pkg.id}" data-price="${pkg.price}">${pkg.package_name} - ₱${parseFloat(pkg.price).toFixed(2)}</option>`;
+        optionsHTML += `<option value="${pkg.id}" data-price="${pkg.price}" data-items="${escapeHtml(pkg.items || '')}">${pkg.package_name} - ₱${parseFloat(pkg.price).toFixed(2)}</option>`;
     });
     
     itemDiv.innerHTML = `
         <div class="row">
             <div class="col-md-8">
                 <label class="form-label">Package</label>
-                <select class="form-select package-select" name="package_id[]" onchange="calculateTotal()" required>
+                <select class="form-select package-select" name="package_id[]" onchange="updatePackageInfo(${packageCounter}); calculateTotal();" required>
                     ${optionsHTML}
                 </select>
+                <div id="package-info-${packageCounter}" class="mt-2" style="display: none;">
+                    <small class="text-muted">
+                        <i class="fas fa-box"></i> <strong>Contains:</strong> 
+                        <span id="package-items-${packageCounter}"></span>
+                    </small>
+                </div>
             </div>
             <div class="col-md-2">
                 <label class="form-label">Quantity</label>
@@ -539,6 +550,27 @@ function addPackage() {
 function removePackage(id) {
     document.getElementById(`package-${id}`)?.remove();
     calculateTotal();
+}
+
+function updatePackageInfo(counter) {
+    const selectElement = document.querySelector(`#package-${counter} .package-select`);
+    const selectedOption = selectElement.options[selectElement.selectedIndex];
+    const packageInfoDiv = document.getElementById(`package-info-${counter}`);
+    const packageItemsSpan = document.getElementById(`package-items-${counter}`);
+    
+    if (selectedOption.value) {
+        const items = selectedOption.dataset.items;
+        packageItemsSpan.textContent = items || 'No items listed';
+        packageInfoDiv.style.display = 'block';
+    } else {
+        packageInfoDiv.style.display = 'none';
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function calculateTotal() {
@@ -568,8 +600,91 @@ function toggleDamageFields() {
     if (!hasDamage) {
         document.getElementById('damage_fee').value = '0';
         document.getElementById('damage_notes').value = '';
+        document.getElementById('damagedEquipmentList').innerHTML = '<p class="text-muted mb-2"><small>Loading equipment from this booking...</small></p>';
+        damagedEquipmentCounter = 0;
+    } else {
+        loadBookingEquipment();
     }
     updateTotalPayment();
+}
+
+function loadBookingEquipment() {
+    if (!currentBookingData) return;
+    
+    const bookingId = currentBookingData.id;
+    
+    fetch(`get_booking_equipment.php?booking_id=${bookingId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bookingEquipments = data.equipment;
+                document.getElementById('damagedEquipmentList').innerHTML = '';
+                addDamagedEquipment();
+            } else {
+                document.getElementById('damagedEquipmentList').innerHTML = '<p class="text-danger mb-0">No equipment found in this booking</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading equipment:', error);
+            document.getElementById('damagedEquipmentList').innerHTML = '<p class="text-danger mb-0">Error loading equipment</p>';
+        });
+}
+
+function addDamagedEquipment() {
+    if (bookingEquipments.length === 0) {
+        alert('No equipment available in this booking');
+        return;
+    }
+    
+    damagedEquipmentCounter++;
+    const listDiv = document.getElementById('damagedEquipmentList');
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'damaged-item';
+    itemDiv.id = `damaged-${damagedEquipmentCounter}`;
+    
+    let optionsHTML = '<option value="">-- Select Equipment --</option>';
+    bookingEquipments.forEach(eq => {
+        optionsHTML += `<option value="${eq.equipment_id}" data-max="${eq.quantity}">${eq.equipment_name} (Booked: ${eq.quantity})</option>`;
+    });
+    
+    itemDiv.innerHTML = `
+        <div class="row g-2">
+            <div class="col-md-6">
+                <label class="form-label small">Equipment</label>
+                <select class="form-select form-select-sm" name="damaged_equipment_id[]" onchange="updateMaxQuantity(${damagedEquipmentCounter})" required>
+                    ${optionsHTML}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small">Damaged Quantity</label>
+                <input type="number" class="form-control form-control-sm damaged-qty" id="damaged-qty-${damagedEquipmentCounter}" name="damaged_quantity[]" value="1" min="1" required>
+                <small class="text-muted" id="max-qty-${damagedEquipmentCounter}"></small>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="button" class="btn btn-danger btn-sm w-100" onclick="removeDamagedEquipment(${damagedEquipmentCounter})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    
+    listDiv.appendChild(itemDiv);
+}
+
+function updateMaxQuantity(counter) {
+    const selectElement = document.querySelector(`#damaged-${counter} select`);
+    const selectedOption = selectElement.options[selectElement.selectedIndex];
+    const maxQty = selectedOption.dataset.max || 1;
+    
+    const qtyInput = document.getElementById(`damaged-qty-${counter}`);
+    qtyInput.max = maxQty;
+    qtyInput.value = Math.min(qtyInput.value, maxQty);
+    
+    document.getElementById(`max-qty-${counter}`).textContent = `Max: ${maxQty}`;
+}
+
+function removeDamagedEquipment(id) {
+    document.getElementById(`damaged-${id}`)?.remove();
 }
 
 function updateTotalPayment() {
@@ -586,13 +701,13 @@ function updateTotalPayment() {
 function openReturnModal(bookingId, isOverdue) {
     document.getElementById('return_booking_id').value = bookingId;
     
-    // Reset form
     document.getElementById('no_damage').checked = true;
     document.getElementById('damage_fee').value = '0';
     document.getElementById('damage_notes').value = '';
     document.getElementById('damageFields').style.display = 'none';
+    document.getElementById('damagedEquipmentList').innerHTML = '<p class="text-muted mb-2"><small>Loading equipment from this booking...</small></p>';
+    damagedEquipmentCounter = 0;
     
-    // Update modal appearance based on overdue status
     const modalHeader = document.getElementById('returnModalHeader');
     const modalTitle = document.getElementById('returnModalTitle');
     const returnAlert = document.getElementById('returnAlert');
@@ -614,7 +729,6 @@ function openReturnModal(bookingId, isOverdue) {
         submitBtn.innerHTML = '<i class="fas fa-check"></i> Process Return';
     }
     
-    // Fetch booking details
     fetch(`get_booking_details.php?id=${bookingId}`)
         .then(response => response.json())
         .then(data => {
@@ -656,8 +770,42 @@ function viewBooking(bookingId) {
 
 function displayBookingDetails(booking, items) {
     let itemsHTML = '';
+    
     items.forEach(item => {
-        itemsHTML += `<tr><td>${item.item_name}</td><td>${item.type}</td><td>${item.quantity}</td><td>₱${parseFloat(item.price).toFixed(2)}</td></tr>`;
+        if (item.type === 'Package') {
+            itemsHTML += `
+                <tr class="table-success">
+                    <td>
+                        <i class="fas fa-box-open text-success"></i> 
+                        <strong>${item.item_name}</strong>
+                        <button type="button" class="btn btn-sm btn-link p-0 ms-2" onclick="togglePackageItems(${item.id})" id="toggle-btn-${item.id}">
+                            <i class="fas fa-chevron-down" id="toggle-icon-${item.id}"></i> Show Items
+                        </button>
+                    </td>
+                    <td>${item.type}</td>
+                    <td>${item.quantity}</td>
+                    <td>₱${parseFloat(item.price).toFixed(2)}</td>
+                </tr>
+                <tr id="package-items-${item.id}" style="display: none;">
+                    <td colspan="4" class="bg-light">
+                        <div class="ps-4">
+                            <small class="text-muted">
+                                <i class="fas fa-spinner fa-spin"></i> Loading package contents...
+                            </small>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        } else {
+            itemsHTML += `
+                <tr>
+                    <td><i class="fas fa-tools text-primary"></i> ${item.item_name}</td>
+                    <td>${item.type}</td>
+                    <td>${item.quantity}</td>
+                    <td>₱${parseFloat(item.price).toFixed(2)}</td>
+                </tr>
+            `;
+        }
     });
     
     const now = new Date();
@@ -721,7 +869,41 @@ function displayBookingDetails(booking, items) {
     document.getElementById('bookingDetailsContent').innerHTML = html;
 }
 
-// Timer functionality - shows countdown or payment due
+function togglePackageItems(bookingItemId) {
+    const itemsRow = document.getElementById(`package-items-${bookingItemId}`);
+    const toggleIcon = document.getElementById(`toggle-icon-${bookingItemId}`);
+    const toggleBtn = document.getElementById(`toggle-btn-${bookingItemId}`);
+    
+    if (itemsRow.style.display === 'none') {
+        fetch(`get_package_items.php?booking_item_id=${bookingItemId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.items.length > 0) {
+                    let itemsHTML = '<div class="ps-4"><small class="text-muted"><strong>Package contains:</strong></small><ul class="mb-0 mt-1">';
+                    data.items.forEach(item => {
+                        itemsHTML += `<li>${item.equipment_name} <span class="badge bg-secondary">${item.quantity}x</span></li>`;
+                    });
+                    itemsHTML += '</ul></div>';
+                    itemsRow.querySelector('td').innerHTML = itemsHTML;
+                } else {
+                    itemsRow.querySelector('td').innerHTML = '<div class="ps-4"><small class="text-muted">No items found</small></div>';
+                }
+                itemsRow.style.display = '';
+                toggleIcon.className = 'fas fa-chevron-up';
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-up" id="toggle-icon-' + bookingItemId + '"></i> Hide Items';
+            })
+            .catch(error => {
+                console.error('Error loading package items:', error);
+                itemsRow.querySelector('td').innerHTML = '<div class="ps-4"><small class="text-danger">Error loading items</small></div>';
+                itemsRow.style.display = '';
+            });
+    } else {
+        itemsRow.style.display = 'none';
+        toggleIcon.className = 'fas fa-chevron-down';
+        toggleBtn.innerHTML = '<i class="fas fa-chevron-down" id="toggle-icon-' + bookingItemId + '"></i> Show Items';
+    }
+}
+
 function updateTimers() {
     const rows = document.querySelectorAll('.booking-row');
     const now = new Date();
@@ -737,9 +919,8 @@ function updateTimers() {
         const timeDiff = returnDate - now;
         
         if (timeDiff < 0) {
-            // OVERDUE - Show payment amount
             const totalSeconds = Math.floor(Math.abs(timeDiff) / 1000);
-            const hoursOverdue = Math.ceil(totalSeconds / 3600); // Round up to next hour
+            const hoursOverdue = Math.ceil(totalSeconds / 3600);
             const paymentDue = hoursOverdue * 100;
             
             timerElement.className = 'timer-badge timer-pay';
@@ -747,7 +928,6 @@ function updateTimers() {
             return;
         }
         
-        // NOT YET OVERDUE - Show countdown
         const totalSeconds = Math.floor(timeDiff / 1000);
         const days = Math.floor(totalSeconds / (60 * 60 * 24));
         const hours = Math.floor((totalSeconds % (60 * 60 * 24)) / (60 * 60));

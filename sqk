@@ -118,3 +118,7 @@ ALTER TABLE customer_booking
   ADD COLUMN fine_amount DECIMAL(10,2) DEFAULT 0.00,
   ADD COLUMN damage_fee DECIMAL(10,2) DEFAULT 0.00,
   ADD COLUMN damage_notes TEXT NULL;
+
+  -- Add column to store damaged equipment details (JSON format)
+ALTER TABLE customer_booking 
+ADD COLUMN damaged_items TEXT NULL AFTER damage_notes;
