@@ -122,3 +122,12 @@ ALTER TABLE customer_booking
   -- Add column to store damaged equipment details (JSON format)
 ALTER TABLE customer_booking 
 ADD COLUMN damaged_items TEXT NULL AFTER damage_notes;
+
+-- I-run ito sa phpMyAdmin
+ALTER TABLE customer_booking 
+ADD COLUMN sms_reminder_sent TINYINT(1) DEFAULT 0,
+-- ADD COLUMN overdue_penalty DECIMAL(10,2) DEFAULT 0.00,
+ADD COLUMN actual_return_date DATETIME NULL;
+
+ALTER TABLE customer_booking 
+ADD COLUMN sms_reminder_sent TINYINT(1) DEFAULT 0;

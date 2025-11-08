@@ -31,7 +31,7 @@ $conn->query("UPDATE customer_booking
 
 $bookings_query = "SELECT id, customer_name, email, phone, address, borrow_date, return_date, 
                    actual_return_date, total_amount, fine_amount, damage_fee, damage_notes,
-                   status, created_at,
+                   status, created_at, sms_reminder_sent,
                    CASE 
                        WHEN status = 'Borrowed' AND NOW() > return_date THEN 'Overdue'
                        ELSE status
@@ -133,6 +133,11 @@ if ($pkg_result) {
     .timer-upcoming { background-color: #0dcaf0; color: #000; }
     .timer-soon { background-color: #ffc107; color: #000; }
     .timer-pay { background-color: #dc3545; color: white; font-weight: 700; }
+    .sms-badge {
+        font-size: 0.75rem;
+        padding: 3px 8px;
+        margin-left: 5px;
+    }
 </style>
 </head>
 <body>
@@ -192,7 +197,14 @@ if ($pkg_result) {
                                             data-display-status="<?php echo $booking['display_status']; ?>">
                                             <td><?php echo htmlspecialchars($booking['customer_name']); ?></td>
                                             <td><?php echo date('M d, Y h:i A', strtotime($booking['borrow_date'])); ?></td>
-                                            <td><?php echo date('M d, Y h:i A', strtotime($booking['return_date'])); ?></td>
+                                            <td>
+                                                <?php echo date('M d, Y h:i A', strtotime($booking['return_date'])); ?>
+                                                <?php if ($booking['sms_reminder_sent'] == 1): ?>
+                                                    <span class="badge bg-success sms-badge" title="SMS reminder sent">
+                                                        <i class="fas fa-check"></i> SMS Sent
+                                                    </span>
+                                                <?php endif; ?>
+                                            </td>
                                             <td>₱<?php echo number_format($booking['total_amount'], 2); ?></td>
                                             <td>
                                                 <span class="status-badge status-<?php echo $booking['display_status']; ?>">
@@ -250,8 +262,9 @@ if ($pkg_result) {
                             <input type="email" class="form-control" id="email" name="email">
                         </div>
                         <div class="col-md-3">
-                            <label for="phone" class="form-label">Phone</label>
-                            <input type="text" class="form-control" id="phone" name="phone">
+                            <label for="phone" class="form-label">Phone <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="phone" name="phone" placeholder="09xxxxxxxxx" required>
+                            <small class="text-muted">Required for SMS notifications</small>
                         </div>
                         <div class="col-md-3">
                             <label for="address" class="form-label">Address</label>
@@ -264,7 +277,7 @@ if ($pkg_result) {
                         <div class="col-md-6">
                             <label for="return_date" class="form-label">Return Date & Time <span class="text-danger">*</span></label>
                             <input type="datetime-local" class="form-control" id="return_date" name="return_date" required>
-                            <small class="text-muted">Borrow date will be set automatically</small>
+                            <small class="text-muted">Borrow date will be set automatically. SMS reminder will be sent 24 hours before due.</small>
                         </div>
                     </div>
 
@@ -823,6 +836,10 @@ function displayBookingDetails(booking, items) {
         </div>`;
     }
     
+    const smsStatus = booking.sms_reminder_sent == 1 
+        ? '<span class="badge bg-success"><i class="fas fa-check"></i> SMS Reminder Sent</span>' 
+        : '<span class="badge bg-secondary"><i class="fas fa-clock"></i> SMS Not Sent</span>';
+    
     const html = `
         <div class="row">
             <div class="col-md-6">
@@ -840,6 +857,7 @@ function displayBookingDetails(booking, items) {
                     <tr><th>Borrow Date:</th><td>${new Date(booking.borrow_date).toLocaleString()}</td></tr>
                     <tr><th>Return Date:</th><td>${new Date(booking.return_date).toLocaleString()}</td></tr>
                     <tr><th>Status:</th><td><span class="status-badge status-${displayStatus}">${displayStatus}</span></td></tr>
+                    <tr><th>SMS Status:</th><td>${smsStatus}</td></tr>
                     <tr><th>Created:</th><td>${new Date(booking.created_at).toLocaleString()}</td></tr>
                 </table>
             </div>
@@ -860,7 +878,7 @@ function displayBookingDetails(booking, items) {
         <div class="alert alert-${booking.fine_amount > 0 ? 'warning' : 'success'}">
             <h5 class="mb-2"><strong>Payment Breakdown:</strong></h5>
             <p class="mb-1">Rental: ₱${parseFloat(booking.total_amount).toFixed(2)}</p>
-            ${booking.fine_amount > 0 ? `<p class="mb-1 text-danger">Overdue Fine: ₱${parseFloat(booking.fine_amount).toFixed(2)}</p>` : ''}
+            ${booking.fine_amount > 0 ? `<p class="mb-1 text-danger">Overdue Fine (₱100/hour): ₱${parseFloat(booking.fine_amount).toFixed(2)}</p>` : ''}
             ${booking.damage_fee > 0 ? `<p class="mb-1 text-warning">Damage Fee: ₱${parseFloat(booking.damage_fee).toFixed(2)}</p>` : ''}
             <hr>
             <h5 class="mb-0"><strong>TOTAL: ₱${grandTotal.toFixed(2)}</strong></h5>
@@ -951,6 +969,13 @@ document.getElementById('bookingForm').addEventListener('submit', function(e) {
     if (!currentBookingType) {
         e.preventDefault();
         alert('Please select a booking type');
+        return false;
+    }
+    
+    const phoneInput = document.getElementById('phone').value.trim();
+    if (!phoneInput) {
+        e.preventDefault();
+        alert('Phone number is required for SMS notifications');
         return false;
     }
     
