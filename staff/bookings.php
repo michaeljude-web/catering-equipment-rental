@@ -1,34 +1,29 @@
 <?php 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 session_start();
+define('ENC_KEY', 'YourSecretKey1234567890abcdef12');
+define('ENC_METHOD', 'AES-256-CBC');
+function dec($data) {
+    if ($data === null || $data === '') return '';
+    $decoded = base64_decode($data);
+    $iv = substr($decoded, 0, 16);
+    return openssl_decrypt(substr($decoded, 16), ENC_METHOD, ENC_KEY, 0, $iv);
+}
 include '../includes/db_connection.php';
 include '../classes/StaffAuth.php';
-
 $staffAuth = new StaffAuth($conn);
 if (!$staffAuth->isLoggedIn()) {
     header('Location: login.php');
     exit();
 }
-
-$staff_firstname = 'Staff';
-if (isset($_SESSION['staff_id'])) {
-    $staff_id = $_SESSION['staff_id'];
-    $query = "SELECT firstname FROM staff_info WHERE id = ?";
-    $stmt = $conn->prepare($query);
-    $stmt->bind_param("i", $staff_id);
-    $stmt->execute();
-    $stmt->bind_result($firstname);
-    if ($stmt->fetch()) {
-        $staff_firstname = $firstname;
-    }
-    $stmt->close();
-}
-
+$staff_firstname = $_SESSION['staff_firstname'] ?? 'Staff';
 $conn->query("UPDATE customer_booking 
-              SET fine_amount = TIMESTAMPDIFF(HOUR, return_date, NOW()) * 100 
-              WHERE status = 'Borrowed' 
-              AND NOW() > return_date 
-              AND TIMESTAMPDIFF(HOUR, return_date, NOW()) > 0");
-
+SET fine_amount = TIMESTAMPDIFF(HOUR, return_date, NOW()) * 100 
+WHERE status = 'Borrowed' 
+AND NOW() > return_date 
+AND TIMESTAMPDIFF(HOUR, return_date, NOW()) > 0");
 $bookings_query = "SELECT id, customer_name, email, phone, address, borrow_date, return_date, 
                    actual_return_date, total_amount, fine_amount, damage_fee, damage_notes,
                    status, created_at, sms_reminder_sent,
@@ -45,10 +40,13 @@ $bookings_result = $conn->query($bookings_query);
 $bookings = [];
 if ($bookings_result) {
     while ($row = $bookings_result->fetch_assoc()) {
+        $row['customer_name'] = dec($row['customer_name']);
+        $row['email']         = dec($row['email']);
+        $row['phone']         = dec($row['phone']);
+        $row['address']       = dec($row['address']);
         $bookings[] = $row;
     }
 }
-
 $equipments = [];
 $equip_query = "SELECT e.id, e.name, e.price, e.category_id, e.stock, e.quantity, c.category_name 
                 FROM equipments e 
@@ -60,7 +58,6 @@ if ($equip_result) {
         $equipments[] = $row;
     }
 }
-
 $packages = [];
 $pkg_query = "SELECT p.id, p.package_name, p.price,
               GROUP_CONCAT(CONCAT(e.name, ' (', pi.quantity, ')') SEPARATOR ', ') as items

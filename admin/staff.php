@@ -47,11 +47,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_staff'])) {
         $e_lastname  = enc($lastname);
         $e_address   = enc($address);
         $e_contact   = enc($contact_number);
-        $e_username  = enc($username);
         $e_password  = password_hash($password, PASSWORD_BCRYPT);
 
         $stmt = $conn->prepare("INSERT INTO staff_info (firstname, lastname, age, address, contact_number, username, password_hash) VALUES (?,?,?,?,?,?,?)");
-        $stmt->bind_param("ssissss", $e_firstname, $e_lastname, $age, $e_address, $e_contact, $e_username, $e_password);
+        $stmt->bind_param("ssissss", $e_firstname, $e_lastname, $age, $e_address, $e_contact, $username, $e_password);
         $stmt->execute();
         $stmt->close();
     }
@@ -74,15 +73,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_staff'])) {
         $e_lastname  = enc($lastname);
         $e_address   = enc($address);
         $e_contact   = enc($contact_number);
-        $e_username  = enc($username);
 
         if (!empty($password)) {
             $e_password = password_hash($password, PASSWORD_BCRYPT);
             $stmt = $conn->prepare("UPDATE staff_info SET firstname=?, lastname=?, age=?, address=?, contact_number=?, username=?, password_hash=? WHERE id=?");
-            $stmt->bind_param("ssissssi", $e_firstname, $e_lastname, $age, $e_address, $e_contact, $e_username, $e_password, $id);
+            $stmt->bind_param("ssissssi", $e_firstname, $e_lastname, $age, $e_address, $e_contact, $username, $e_password, $id);
         } else {
             $stmt = $conn->prepare("UPDATE staff_info SET firstname=?, lastname=?, age=?, address=?, contact_number=?, username=? WHERE id=?");
-            $stmt->bind_param("sisssi", $e_firstname, $e_lastname, $age, $e_address, $e_contact, $e_username, $id);
+            $stmt->bind_param("sisssi", $e_firstname, $e_lastname, $age, $e_address, $e_contact, $username, $id);
         }
         $stmt->execute();
         $stmt->close();
@@ -122,7 +120,7 @@ $staff_list = array_map(function($s) {
         'age'            => $s['age'],
         'address'        => dec($s['address']),
         'contact_number' => dec($s['contact_number']),
-        'username'       => dec($s['username']),
+        'username'       => $s['username'],
     ];
 }, $rows);
 ?>
@@ -217,6 +215,7 @@ $staff_list = array_map(function($s) {
     </div>
 </main>
 
+<!-- ADD MODAL -->
 <div class="modal fade" id="addStaffModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <form method="POST" class="modal-content">
@@ -269,6 +268,7 @@ $staff_list = array_map(function($s) {
     </div>
 </div>
 
+<!-- EDIT MODAL -->
 <div class="modal fade" id="editStaffModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <form method="POST" class="modal-content">

@@ -1,11 +1,11 @@
 <?php
 session_start();
 include '../includes/db_connection.php';
+define('ENC_KEY', 'YourSecretKey1234567890abcdef12');
 include '../classes/StaffAuth.php';
 
 $auth = new StaffAuth($conn);
 
-// Redirect if already logged in
 if ($auth->isLoggedIn()) {
     header("Location: dashboard.php");
     exit();
@@ -13,11 +13,25 @@ if ($auth->isLoggedIn()) {
 
 $error_message = '';
 
+function is_safe_input($val) {
+    $blocked = ["'", '"', ';', '--', '#', '/*', '*/', 'SELECT', 'INSERT', 'UPDATE',
+                'DELETE', 'DROP', 'UNION', 'OR ', 'AND ', '<script', '</script',
+                '<', '>', '\\', '/', '=', '%', '&', '|', '`', 'EXEC', 'CAST',
+                'CHAR(', 'alert(', 'onerror', 'onload'];
+    $upper = strtoupper($val);
+    foreach ($blocked as $b) {
+        if (str_contains($upper, strtoupper($b))) return false;
+    }
+    return true;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     $username = trim($_POST['username']);
     $password = $_POST['password'];
-    
-    if (!empty($username) && !empty($password)) {
+
+    if (!is_safe_input($username) || !is_safe_input($password)) {
+        $error_message = 'Invalid characters detected in input.';
+    } elseif (!empty($username) && !empty($password)) {
         if ($auth->login($username, $password)) {
             header("Location: dashboard.php");
             exit();
@@ -32,11 +46,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Staff Login</title>
-<link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
-<link rel="stylesheet" href="../assets/font/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Login</title>
+    <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../assets/font/css/all.min.css">
 </head>
 <body class="bg-light">
 
@@ -48,7 +62,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     <div class="text-center mb-4">
                         <i class="fas fa-user-circle fa-4x text-primary mb-3"></i>
                         <h1 class="h4 fw-bold">Login</h1>
-                    
                     </div>
 
                     <?php if (!empty($error_message)): ?>
@@ -65,13 +78,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                                 <span class="input-group-text bg-light border-end-0">
                                     <i class="fas fa-user text-muted"></i>
                                 </span>
-                                <input type="text" 
-                                       class="form-control border-start-0 ps-0" 
-                                       id="username" 
-                                       name="username" 
+                                <input type="text"
+                                       class="form-control border-start-0 ps-0"
+                                       id="username"
+                                       name="username"
                                        placeholder="Enter username"
                                        value="<?= isset($_POST['username']) ? htmlspecialchars($_POST['username']) : '' ?>"
-                                       required 
+                                       maxlength="50"
+                                       pattern="[a-zA-Z0-9_]+"
+                                       title="Only letters, numbers, and underscores allowed"
+                                       autocomplete="off"
+                                       required
                                        autofocus>
                             </div>
                         </div>
@@ -82,11 +99,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                                 <span class="input-group-text bg-light border-end-0">
                                     <i class="fas fa-lock text-muted"></i>
                                 </span>
-                                <input type="password" 
-                                       class="form-control border-start-0 ps-0" 
-                                       id="password" 
-                                       name="password" 
+                                <input type="password"
+                                       class="form-control border-start-0 ps-0"
+                                       id="password"
+                                       name="password"
                                        placeholder="Enter password"
+                                       maxlength="72"
+                                       autocomplete="off"
                                        required>
                             </div>
                         </div>
@@ -100,7 +119,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
                     <hr class="my-4">
 
-              
                 </div>
             </div>
         </div>
@@ -109,5 +127,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
 <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="../assets/font/js/all.min.js"></script>
+<script>
+const blocked = ["'", '"', ';', '--', '<', '>', '\\', '=', '`', '|', '&', '%'];
+document.querySelectorAll('input[type=text], input[type=password]').forEach(input => {
+    input.addEventListener('input', function () {
+        blocked.forEach(c => { this.value = this.value.split(c).join(''); });
+    });
+    input.addEventListener('paste', function (e) {
+        e.preventDefault();
+        let text = (e.clipboardData || window.clipboardData).getData('text');
+        blocked.forEach(c => { text = text.split(c).join(''); });
+        this.value += text;
+    });
+});
+</script>
 </body>
 </html>

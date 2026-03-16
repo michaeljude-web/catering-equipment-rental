@@ -1,4 +1,4 @@
-<!-- Mobile Navbar (shows on small screens only) -->
+<?php $staff_firstname = $_SESSION['staff_firstname'] ?? ''; ?>
 <nav class="navbar navbar-expand-lg navbar-light bg-white shadow d-lg-none">
     <div class="container-fluid">
         <a class="navbar-brand d-flex align-items-center" href="#">
