@@ -10,11 +10,9 @@ if (!$auth->isLoggedIn()) {
     exit();
 }
 
-// Get date range filters
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 
-// Daily Movement - Borrowing Activity
 $daily_borrowing_query = "
     SELECT 
         DATE(borrow_date) as activity_date,
@@ -31,7 +29,6 @@ $stmt->bind_param("ss", $start_date, $end_date);
 $stmt->execute();
 $daily_borrowing = $stmt->get_result();
 
-// Daily Movement - Return Activity
 $daily_returns_query = "
     SELECT 
         DATE(actual_return_date) as return_date,
@@ -51,7 +48,6 @@ $stmt->bind_param("ss", $start_date, $end_date);
 $stmt->execute();
 $daily_returns = $stmt->get_result();
 
-// Fines & Damages Report
 $fines_damages_query = "
     SELECT 
         cb.customer_name,
@@ -73,7 +69,6 @@ $stmt->bind_param("ss", $start_date, $end_date);
 $stmt->execute();
 $fines_damages = $stmt->get_result();
 
-// Currently Borrowed (Active Rentals)
 $active_rentals_query = "
     SELECT 
         cb.customer_name,
@@ -93,7 +88,6 @@ $active_rentals_query = "
 ";
 $active_rentals = $conn->query($active_rentals_query);
 
-// Customer Activity Report
 $customer_activity_query = "
     SELECT 
         customer_name,
@@ -118,7 +112,7 @@ $customer_activity = $stmt->get_result();
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Reports & Daily Movement - Catering System</title>
+<title>Reports</title>
 <link rel="stylesheet" href="../assets/bootstrap/css/bootstrap.min.css">
 <link rel="stylesheet" href="../assets/font/css/all.min.css">
 <style>
@@ -132,15 +126,14 @@ $customer_activity = $stmt->get_result();
     }
     .movement-borrow { border-left-color: #0d6efd; }
     .movement-return { border-left-color: #198754; }
-    
-    /* PRINT STYLES */
+ 
     @media print {
         @page {
             margin: 15mm;
             size: A4 portrait;
         }
         
-        /* Hide screen-only elements */
+   
         .no-print, 
         .sidebar,
         nav,
@@ -193,15 +186,13 @@ $customer_activity = $stmt->get_result();
             margin: 3px 0;
         }
         
-        /* Remove all colors - black and white only */
         * {
             background: white !important;
             color: black !important;
             border-color: #333 !important;
             box-shadow: none !important;
         }
-        
-        /* Clean table borders */
+
         table {
             border-collapse: collapse;
             width: 100%;
@@ -250,8 +241,7 @@ $customer_activity = $stmt->get_result();
         .card-body {
             padding: 15px !important;
         }
-        
-        /* Movement cards - convert to table format */
+  
         .movement-card {
             border: 1px solid #333 !important;
             margin-bottom: 10px;
@@ -266,7 +256,6 @@ $customer_activity = $stmt->get_result();
             color: black !important;
         }
         
-        /* Text formatting */
         h1, h2, h3, h4, h5, h6 {
             color: black !important;
         }
@@ -284,7 +273,6 @@ $customer_activity = $stmt->get_result();
             display: inline-block;
         }
         
-        /* Remove row/col structure for print */
         .row {
             display: block !important;
             margin: 0 !important;
@@ -301,8 +289,7 @@ $customer_activity = $stmt->get_result();
         .section-break {
             page-break-before: always;
         }
-        
-        /* Compact spacing */
+
         small {
             font-size: 8pt;
         }
@@ -310,19 +297,16 @@ $customer_activity = $stmt->get_result();
         p {
             margin: 3px 0;
         }
-        
-        /* Hide overflow for print */
+ 
         div[style*="overflow-y"] {
             max-height: none !important;
             overflow: visible !important;
         }
-        
-        /* Strong emphasis */
+
         strong {
             font-weight: bold;
         }
-        
-        /* Footer */
+
         .print-footer {
             display: block !important;
             text-align: center;
@@ -338,7 +322,6 @@ $customer_activity = $stmt->get_result();
 
 <?php include '../includes/admin_sidebar.php'; ?>
     <main class="flex-grow-1 p-4">
-        <!-- Print Company Header (hidden on screen) -->
         <div class="print-company-header" style="display: none;">
             <h1>EL CIELO CATERING SERVICES</h1>
             <div class="report-title">DAILY MOVEMENT & OPERATIONS REPORT</div>
@@ -353,7 +336,6 @@ $customer_activity = $stmt->get_result();
             </button>
         </div>
 
-        <!-- Date Range Filter -->
         <div class="card mb-4 no-print">
             <div class="card-body">
                 <form method="GET" class="row g-3">
@@ -374,9 +356,7 @@ $customer_activity = $stmt->get_result();
             </div>
         </div>
 
-        <!-- DAILY MOVEMENT SECTION -->
         <div class="row mb-4">
-            <!-- Daily Borrowing Activity -->
             <div class="col-lg-6 mb-3">
                 <div class="card border-0 shadow-sm">
                     <div class="card-header bg-primary text-white">
@@ -415,7 +395,6 @@ $customer_activity = $stmt->get_result();
                 </div>
             </div>
 
-            <!-- Daily Return Activity -->
             <div class="col-lg-6 mb-3">
                 <div class="card border-0 shadow-sm">
                     <div class="card-header bg-success text-white">
@@ -460,7 +439,6 @@ $customer_activity = $stmt->get_result();
             </div>
         </div>
 
-        <!-- Fines & Damages Report -->
         <?php if ($fines_damages->num_rows > 0): ?>
         <div class="card mb-4">
             <div class="card-header bg-danger text-white">
@@ -503,7 +481,6 @@ $customer_activity = $stmt->get_result();
         </div>
         <?php endif; ?>
 
-        <!-- Currently Active Rentals -->
         <?php if ($active_rentals->num_rows > 0): ?>
         <div class="card mb-4">
             <div class="card-header bg-info text-white">
@@ -563,7 +540,6 @@ $customer_activity = $stmt->get_result();
         </div>
         <?php endif; ?>
 
-        <!-- Top Customers -->
         <div class="card mb-4">
             <div class="card-header bg-dark text-white">
                 <h5 class="mb-0"><i class="fas fa-users"></i> Top Customers</h5>
@@ -598,7 +574,6 @@ $customer_activity = $stmt->get_result();
             </div>
         </div>
 
-        <!-- Print Footer (hidden on screen) -->
         <div class="print-footer" style="display: none;">
             <p>This is a system-generated report from El Cielo Catering Services</p>
             <p>Printed on: <?php echo date('F d, Y - h:i A'); ?></p>

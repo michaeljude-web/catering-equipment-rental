@@ -98,7 +98,6 @@ if(isset($_POST['add_equipment'])) {
         move_uploaded_file($_FILES['photo']['tmp_name'], "../uploads/".$photoName);
     }
 
-    // Stock is initially same as quantity (all items available)
     $stmt = $conn->prepare("INSERT INTO equipments (name, category_id, price, quantity, stock, photo, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
     $stmt->bind_param("sidiis", $name, $category_id, $price, $quantity, $quantity, $photoName);
     $stmt->execute();
@@ -115,7 +114,6 @@ if(isset($_POST['edit_equipment'])) {
     $price = $_POST['price'];
     $quantity = $_POST['quantity'];
     
-    // Get current quantity and stock to calculate difference
     $currentStmt = $conn->prepare("SELECT quantity, stock FROM equipments WHERE id=?");
     $currentStmt->bind_param("i", $id);
     $currentStmt->execute();
@@ -124,11 +122,9 @@ if(isset($_POST['edit_equipment'])) {
     $currentStock = $currentData['stock'];
     $currentStmt->close();
     
-    // Calculate the difference in quantity
     $quantityDiff = $quantity - $currentQuantity;
     $newStock = $currentStock + $quantityDiff;
     
-    // Ensure stock doesn't go below 0
     $newStock = max(0, $newStock);
 
     if(isset($_FILES['photo']) && $_FILES['photo']['name'] != '') {
@@ -439,8 +435,7 @@ function openEditModal(id, name, category, price, quantity, stock, photo) {
     document.getElementById('edit_price').value = price;
     document.getElementById('edit_quantity').value = quantity;
     document.getElementById('edit_stock_display').textContent = stock;
-    
-    // Set category
+
     const categorySelect = document.getElementById('edit_category_id');
     for(let i = 0; i < categorySelect.options.length; i++) {
         if(categorySelect.options[i].text === category) {
@@ -448,8 +443,7 @@ function openEditModal(id, name, category, price, quantity, stock, photo) {
             break;
         }
     }
-    
-    // Show photo preview
+
     const photoPreview = document.getElementById('edit_photo_preview');
     if(photo) {
         photoPreview.innerHTML = `<img src="../uploads/${photo}" width="100" class="rounded mb-2">`;
@@ -461,7 +455,6 @@ function openEditModal(id, name, category, price, quantity, stock, photo) {
     modal.show();
 }
 
-// Search functionality
 let searchTimeout;
 const searchInput = document.getElementById('searchInput');
 const searchLoading = document.querySelector('.search-loading');
