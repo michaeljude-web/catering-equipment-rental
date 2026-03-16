@@ -1,1 +1,0 @@
-sa status ko pala dito ang dapat lang ma display is 'Borrowed' at 'Returned' ('Borrowed', 'Returned', 'Overdue', 'Cancelled...)

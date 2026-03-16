@@ -2,21 +2,23 @@
 include '../includes/db_connection.php';
 include '../classes/AdminAuth.php';
 
-$max_attempts = 5;
+$max_attempts         = 5;
 $ban_seconds_duration = 20;
 
-if (empty($_COOKIE['device_id'])) {
-    $device_id = bin2hex(random_bytes(16));
-    setcookie('device_id', $device_id, time() + (60 * 60 * 24 * 30), '/', '', false, true);
-} else {
-    $device_id = preg_replace('/[^a-f0-9]/', '', $_COOKIE['device_id']);
-}
+$ip          = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+$ua          = $_SERVER['HTTP_USER_AGENT']      ?? '';
+$lang        = $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '';
+$encoding    = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
+$device_hash = hash('sha256', $ua . $lang . $encoding);
 
-$attempt_key = 'attempts_' . $device_id;
-$ban_key     = 'ban_until_' . $device_id;
+$stmt = $conn->prepare("SELECT attempts, ban_until FROM login_attempts WHERE ip_address = ? AND device_hash = ?");
+$stmt->bind_param("ss", $ip, $device_hash);
+$stmt->execute();
+$row = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
-$attempts  = isset($_COOKIE[$attempt_key]) ? (int)$_COOKIE[$attempt_key] : 0;
-$ban_until = isset($_COOKIE[$ban_key])     ? (int)$_COOKIE[$ban_key]     : 0;
+$attempts  = $row ? (int)$row['attempts']  : 0;
+$ban_until = $row ? (int)$row['ban_until'] : 0;
 
 $is_banned     = $ban_until > time();
 $ban_secs_left = max(0, $ban_until - time());
@@ -33,8 +35,7 @@ function is_safe_input($val) {
     return true;
 }
 
-$message      = '';
-$message_type = 'danger';
+$message = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
     $username = trim($_POST['username'] ?? '');
@@ -48,9 +49,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
         $auth = new AdminAuth($conn);
 
         if ($auth->login($username, $password)) {
-            // Reset attempts on success
-            setcookie($attempt_key, 0, time() - 3600, '/', '', false, true);
-            setcookie($ban_key,     0, time() - 3600, '/', '', false, true);
+            $stmt = $conn->prepare("DELETE FROM login_attempts WHERE ip_address = ? AND device_hash = ?");
+            $stmt->bind_param("ss", $ip, $device_hash);
+            $stmt->execute();
+            $stmt->close();
             header('Location: dashboard.php');
             exit();
         } else {
@@ -58,17 +60,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
             $remaining = $max_attempts - $attempts;
 
             if ($attempts >= $max_attempts) {
-                $ban_until = time() + $ban_seconds_duration;
-                setcookie($ban_key,     $ban_until, $ban_until + 3600, '/', '', false, true);
-                setcookie($attempt_key, $attempts,  time() + 3600,     '/', '', false, true);
+                $ban_until     = time() + $ban_seconds_duration;
                 $is_banned     = true;
                 $ban_secs_left = $ban_seconds_duration;
                 $message       = "Too many failed attempts. Try again in {$ban_seconds_duration} seconds.";
+
+                $stmt = $conn->prepare("
+                    INSERT INTO login_attempts (ip_address, device_hash, attempts, ban_until)
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE attempts = ?, ban_until = ?
+                ");
+                $stmt->bind_param("ssiiii", $ip, $device_hash, $attempts, $ban_until, $attempts, $ban_until);
+                $stmt->execute();
+                $stmt->close();
             } else {
-                setcookie($attempt_key, $attempts, time() + 3600, '/', '', false, true);
                 $message = $remaining === 1
                     ? 'Invalid credentials. 1 attempt remaining before lockout.'
                     : "Invalid credentials. {$remaining} attempts remaining.";
+
+                $stmt = $conn->prepare("
+                    INSERT INTO login_attempts (ip_address, device_hash, attempts, ban_until)
+                    VALUES (?, ?, ?, 0)
+                    ON DUPLICATE KEY UPDATE attempts = ?
+                ");
+                $stmt->bind_param("ssii", $ip, $device_hash, $attempts, $attempts);
+                $stmt->execute();
+                $stmt->close();
             }
         }
     }
@@ -94,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
         <div class="alert alert-danger text-center py-2">
             <i class="fas fa-ban me-1"></i>
             Too many failed attempts.<br>
-            <strong>Try again in <?= $ban_secs_left ?> second<?= $ban_secs_left !== 1 ? 's' : '' ?>.</strong>
+            <strong>Try again in <span id="countdown"><?= $ban_secs_left ?></span> second<?= $ban_secs_left !== 1 ? 's' : '' ?>.</strong>
         </div>
     <?php elseif ($message): ?>
         <div class="alert alert-danger text-center py-2">
@@ -112,31 +129,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
     <?php endif; ?>
 
     <div class="mb-3">
-        <input
-            type="text"
-            name="username"
-            placeholder="Username"
-            class="form-control"
-            required
-            autofocus
-            <?= $is_banned ? 'disabled' : '' ?>
-            maxlength="50"
-            pattern="[a-zA-Z0-9_]+"
+        <input type="text" name="username" placeholder="Username" class="form-control"
+            required autofocus <?= $is_banned ? 'disabled' : '' ?>
+            maxlength="50" pattern="[a-zA-Z0-9_]+"
             title="Only letters, numbers, and underscores allowed"
             autocomplete="off"
             value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
     </div>
 
     <div class="mb-3">
-        <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            class="form-control"
-            required
-            <?= $is_banned ? 'disabled' : '' ?>
-            maxlength="72"
-            autocomplete="off">
+        <input type="password" name="password" placeholder="Password" class="form-control"
+            required <?= $is_banned ? 'disabled' : '' ?>
+            maxlength="72" autocomplete="off">
     </div>
 
     <button type="submit" class="btn btn-primary w-100" <?= $is_banned ? 'disabled' : '' ?>>
@@ -146,23 +150,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
 
     <?php if ($is_banned): ?>
         <p class="text-center text-muted mt-3 small">
-            <i class="fas fa-clock me-1"></i> Unlocks in <?= $ban_secs_left ?> second<?= $ban_secs_left !== 1 ? 's' : '' ?>
+            <i class="fas fa-clock me-1"></i> Unlocks in <span id="countdown2"><?= $ban_secs_left ?></span>s
         </p>
     <?php endif; ?>
 </form>
 
 <script src="../assets/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="../assets/font/js/all.min.js"></script>
-
 <script>
+<?php if ($is_banned): ?>
+let secs = <?= $ban_secs_left ?>;
+const c1 = document.getElementById('countdown');
+const c2 = document.getElementById('countdown2');
+const timer = setInterval(() => {
+    secs--;
+    if (c1) c1.textContent = secs;
+    if (c2) c2.textContent = secs;
+    if (secs <= 0) { clearInterval(timer); location.reload(); }
+}, 1000);
+<?php endif; ?>
+
 const blocked = ["'", '"', ';', '--', '<', '>', '\\', '=', '`', '|', '&', '%'];
 document.querySelectorAll('input[type=text], input[type=password]').forEach(input => {
     input.addEventListener('input', function () {
-        blocked.forEach(c => {
-            if (this.value.includes(c)) {
-                this.value = this.value.split(c).join('');
-            }
-        });
+        blocked.forEach(c => { this.value = this.value.split(c).join(''); });
     });
     input.addEventListener('paste', function (e) {
         e.preventDefault();
