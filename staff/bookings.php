@@ -15,7 +15,7 @@ include '../includes/db_connection.php';
 include '../classes/StaffAuth.php';
 $staffAuth = new StaffAuth($conn);
 if (!$staffAuth->isLoggedIn()) {
-    header('Location: login.php');
+    header('Location: ../login.php');
     exit();
 }
 $staff_firstname = $_SESSION['staff_firstname'] ?? 'Staff';

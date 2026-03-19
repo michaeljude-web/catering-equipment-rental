@@ -3,10 +3,8 @@ session_start();
 include '../includes/db_connection.php';
 include '../classes/StaffAuth.php';
 
-// Default staff name
 $staff_firstname = 'Staff';
 
-// Get staff's first name if logged in
 if (isset($_SESSION['staff_id'])) {
     $staff_id = $_SESSION['staff_id'];
     $query = "SELECT firstname FROM staff_info WHERE id = ?";
@@ -20,7 +18,6 @@ if (isset($_SESSION['staff_id'])) {
     $stmt->close();
 }
 
-// Get filter parameters
 $view_type = isset($_GET['view']) ? $_GET['view'] : 'equipment';
 $category_filter = isset($_GET['category']) ? intval($_GET['category']) : 0;
 $stock_filter = isset($_GET['stock']) ? $_GET['stock'] : '';

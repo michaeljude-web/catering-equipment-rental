@@ -21,7 +21,7 @@
                 <li class="nav-item"><a class="nav-link" href="bookings.php"><i class="fa-solid fa-calendar-check me-1"></i> Bookings</a></li>
                 <li class="nav-item"><a class="nav-link" href="customers.php"><i class="fa-solid fa-users me-1"></i> Customers</a></li>
                 <li class="nav-item">
-                    <a class="nav-link text-danger" href="logout.php">
+                    <a class="nav-link text-danger" href="../logout.php">
                         <i class="fa-solid fa-sign-out-alt me-1"></i>
                         Logout
                     </a>
@@ -60,7 +60,7 @@
                 </a>
             </li>
             <li class="nav-item mt-auto">
-                <a href="logout.php" class="nav-link text-danger">
+                <a href="../logout.php" class="nav-link text-danger">
                     <i class="fa-solid fa-sign-out-alt me-2"></i>
                     Logout
                 </a>

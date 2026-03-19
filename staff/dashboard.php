@@ -17,7 +17,7 @@ function dec($data) {
 
 $staffAuth = new StaffAuth($conn);
 if (!$staffAuth->isLoggedIn()) {
-    header('Location: login.php');
+    header('Location: ../login.php');
     exit();
 }
 

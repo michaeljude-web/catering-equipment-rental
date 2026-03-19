@@ -14,7 +14,7 @@ require_once '../classes/Pagination.php';
 $auth = new AdminAuth($conn);
 
 if (!$auth->isLoggedIn()) {
-    header("Location: login.php");
+    header("Location: ../login.php");
     exit();
 }
 

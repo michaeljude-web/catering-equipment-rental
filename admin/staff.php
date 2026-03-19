@@ -8,7 +8,7 @@ include '../classes/AdminAuth.php';
 
 $auth = new AdminAuth($conn);
 if (!$auth->isLoggedIn()) {
-    header("Location: login.php");
+    header("Location: ../login.php");
     exit();
 }
 
