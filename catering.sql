@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost
--- Generation Time: Mar 16, 2026 at 11:20 PM
+-- Generation Time: Mar 19, 2026 at 01:04 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.1.25
 
@@ -118,7 +118,7 @@ CREATE TABLE `customer_booking` (
 --
 
 INSERT INTO `customer_booking` (`id`, `customer_name`, `email`, `phone`, `address`, `borrow_date`, `return_date`, `total_amount`, `status`, `created_at`, `actual_return_date`, `fine_amount`, `damage_fee`, `damage_notes`, `damaged_items`, `sms_reminder_sent`) VALUES
-(12, 'XJ/G/1k5F+MljzZcd4Ax6DUyOVJ5YS8wWDljWThaVkV6OEF6Y2c9PQ==', '0rw4Wj+8Hh7GDwt/eXQIUVhvRGZIRURCMXFLd3ZZbU5oU1F2c1E9PQ==', 'eBTvVTsBEopyAb7Epied129wb3VRb1I1U2t5QzhQVGpUbUNjVVE9PQ==', 'uhBugJIp+LHhdrRt6bDHCDdpVGhuOXFURlg5Mkt5ZUN2NTR3Tys0Tm0xZEs1Z2pxUjdtYWE1Vys0TVNJK0cvV3NuVEl2YVZIK1BZejUwa1g=', '2026-03-16 05:21:31', '2026-03-16 23:01:00', 20.00, 'Borrowed', '2026-03-16 04:21:31', NULL, 0.00, 0.00, NULL, NULL, 0),
+(12, 'XJ/G/1k5F+MljzZcd4Ax6DUyOVJ5YS8wWDljWThaVkV6OEF6Y2c9PQ==', '0rw4Wj+8Hh7GDwt/eXQIUVhvRGZIRURCMXFLd3ZZbU5oU1F2c1E9PQ==', 'eBTvVTsBEopyAb7Epied129wb3VRb1I1U2t5QzhQVGpUbUNjVVE9PQ==', 'uhBugJIp+LHhdrRt6bDHCDdpVGhuOXFURlg5Mkt5ZUN2NTR3Tys0Tm0xZEs1Z2pxUjdtYWE1Vys0TVNJK0cvV3NuVEl2YVZIK1BZejUwa1g=', '2026-03-16 05:21:31', '2026-03-16 23:01:00', 20.00, 'Borrowed', '2026-03-16 04:21:31', NULL, 6800.00, 0.00, NULL, NULL, 0),
 (13, 'pQ/SHl6FJcdV/AG2MwzIqy9seWhFdm81S0dOK1MrU0FqOUlib0E9PQ==', 'Yb/KH8WfVdt2mbUfCRRPLVp0NVlScDJlWjdyRlhNVVVSS25Qdmc9PQ==', '31vrMLyLGvHDQAB1Gyb9n2VlTk1QVVFienQ4ajBBR3duOVZEdGc9PQ==', '1yoFCQ0VaboUrfLBvk1eVUhlSDZXb1czSVlIbXRyZzI0eHZweG1uK1RNVUhGT3k5Vi9WcThReHBiK2FtUUJ5SzFtYlA1aWd4aFE5OE4vM20=', '2026-03-16 05:39:24', '2026-03-16 23:11:00', 150.00, 'Returned', '2026-03-16 04:39:24', '2026-03-16 05:39:32', 0.00, 0.00, '', NULL, 0);
 
 -- --------------------------------------------------------
@@ -163,16 +163,8 @@ CREATE TABLE `login_attempts` (
   `device_hash` varchar(64) NOT NULL,
   `attempts` int(11) DEFAULT 0,
   `ban_until` int(11) DEFAULT 0,
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `type` varchar(10) NOT NULL DEFAULT 'admin'
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `login_attempts`
---
-
-INSERT INTO `login_attempts` (`id`, `ip_address`, `device_hash`, `attempts`, `ban_until`, `updated_at`, `type`) VALUES
-(8, '127.0.0.1', '49991b6cc38f7f36c1aeeb201f80cfb0bfb83ade4443affa3ef991a36816af8c', 1, 1773699166, '2026-03-16 22:13:37', 'admin');
 
 -- --------------------------------------------------------
 

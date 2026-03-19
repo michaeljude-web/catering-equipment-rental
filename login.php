@@ -92,7 +92,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
             $ban_until     = time() + $ban_seconds_duration;
             $is_banned     = true;
             $ban_secs_left = $ban_seconds_duration;
-            $error_message = "Too many failed attempts. Try again in {$ban_seconds_duration} seconds.";
 
             $stmt = $conn->prepare("
                 INSERT INTO login_attempts (ip_address, device_hash, attempts, ban_until)
@@ -102,6 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
             $stmt->bind_param("ssiiii", $ip, $device_hash, $attempts, $ban_until, $attempts, $ban_until);
             $stmt->execute();
             $stmt->close();
+
+            header('Location: login.php?banned=1');
+            exit();
         } else {
             $error_message = 'Invalid username or password.';
 
@@ -142,7 +144,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
                     <div class="alert alert-danger text-center" id="bannedAlert">
                         <i class="fas fa-ban me-1"></i>
                         Too many failed attempts.<br>
-                        <strong>Try again in <span id="countdown"><?= $ban_secs_left ?></span> second<?= $ban_secs_left !== 1 ? 's' : '' ?>.</strong>
                     </div>
                     <?php elseif (!empty($error_message)): ?>
                     <div class="alert alert-danger alert-dismissible fade show">
@@ -204,21 +205,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
 <script>
 <?php if ($is_banned): ?>
 (function() {
-    let secs      = <?= $ban_secs_left ?>;
-    const c1      = document.getElementById('countdown');
-    const c2      = document.getElementById('countdown2');
-    const alert   = document.getElementById('bannedAlert');
-    const btn     = document.querySelector('button[type=submit]');
-    const inputs  = document.querySelectorAll('input');
-
+    let secs = <?= $ban_secs_left ?>;
+    const c1 = document.getElementById('countdown');
+    const c2 = document.getElementById('countdown2');
     const timer = setInterval(() => {
         secs--;
         if (c1) c1.textContent = secs;
         if (c2) c2.textContent = secs;
-        if (secs <= 0) {
-            clearInterval(timer);
-            location.reload();
-        }
+        if (secs <= 0) { clearInterval(timer); location.href = 'login.php'; }
     }, 1000);
 })();
 <?php endif; ?>
