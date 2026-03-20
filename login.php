@@ -144,6 +144,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
                     <div class="alert alert-danger text-center" id="bannedAlert">
                         <i class="fas fa-ban me-1"></i>
                         Too many failed attempts.<br>
+                        <strong>Try again in <span id="countdown"><?= $ban_secs_left ?></span> second<?= $ban_secs_left !== 1 ? 's' : '' ?>.</strong>
+                    </div>
+                    <?php elseif (isset($_GET['reset'])): ?>
+                    <div class="alert alert-success py-2 small">
+                        <i class="fas fa-check-circle me-1"></i> Password reset successfully. You can now log in.
                     </div>
                     <?php elseif (!empty($error_message)): ?>
                     <div class="alert alert-danger alert-dismissible fade show">
@@ -186,6 +191,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
                             <button type="submit" class="btn btn-primary btn-lg" <?= $is_banned ? 'disabled' : '' ?>>
                                 <i class="fas fa-sign-in-alt me-2"></i><?= $is_banned ? 'Account Locked' : 'Login' ?>
                             </button>
+                        </div>
+                        <div class="text-center mt-3">
+                            <a href="forgot_password.php" class="small text-decoration-none text-primary">
+                                Forgot password?
+                            </a>
                         </div>
                     </form>
 

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost
--- Generation Time: Mar 19, 2026 at 01:04 PM
+-- Generation Time: Mar 20, 2026 at 03:38 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.1.25
 
@@ -38,7 +38,7 @@ CREATE TABLE `admin` (
 --
 
 INSERT INTO `admin` (`id`, `username`, `password`) VALUES
-(2, 'admin', '$2y$10$sZpYIBJ1uU1aN1poCmFrb.yJ01.rcOF2sH.oyocHqWW70zPee7ic2');
+(2, 'admin', '$2y$10$os3Ya/c5GNSqcbPG.5Q6JOWpWFy0lUP1ENo3EQebdoqNUfxbi8n9.');
 
 -- --------------------------------------------------------
 
@@ -212,6 +212,33 @@ INSERT INTO `package_items` (`id`, `package_id`, `equipment_id`, `quantity`) VAL
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `security_questions`
+--
+
+CREATE TABLE `security_questions` (
+  `id` int(11) NOT NULL,
+  `question` varchar(255) NOT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `security_questions`
+--
+
+INSERT INTO `security_questions` (`id`, `question`, `is_active`, `created_at`) VALUES
+(1, 'What is the name of your first pet?', 1, '2026-03-20 01:25:55'),
+(2, 'What is your mother\'s maiden name?', 1, '2026-03-20 01:25:55'),
+(3, 'What city were you born in?', 1, '2026-03-20 01:25:55'),
+(4, 'What is your birthday?', 1, '2026-03-20 01:25:55'),
+(5, 'What is your oldest sibling\'s middle name?', 1, '2026-03-20 01:25:55'),
+(6, 'What was the make of your first car?', 1, '2026-03-20 01:25:55'),
+(7, 'What is your favorite childhood food?', 1, '2026-03-20 01:25:55'),
+(8, 'What street did you grow up on?', 1, '2026-03-20 01:25:55');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `staff_info`
 --
 
@@ -232,7 +259,30 @@ CREATE TABLE `staff_info` (
 --
 
 INSERT INTO `staff_info` (`id`, `firstname`, `lastname`, `age`, `address`, `contact_number`, `username`, `password_hash`, `created_at`) VALUES
-(4, 'GZUtvtkpmiu+fxCk5vKG62RKVlFpSkhaeGNhQ0MzT0N5ZGo4RlE9PQ==', 'SOwMpEXuyZnOMbbH5RzGK0ZZd0JRaWk4V1FVenFTVUQrMXpVcGc9PQ==', 15, 'dESkFQZNmrGrS4MKtmECWVhuMzdNM0VHUkl6Zm9BR1ZxV2dKYzA0V2JKVi83NTY1akhaTFI3KzhRSDkvZTRveFk1eTcycTUrUWhtTGN2bHE=', 'WKeq0aVgwot4oj4g5+gokkloU21tZ2doajNmQXFpWXl4Y0lMS3c9PQ==', 'juan', '$2y$10$ayPgRUr6X4sJC7h.zS0mcOhdk4WgL1JoYz7UBgv4ZyhYIk6cBV1FK', '2026-03-16 11:41:58');
+(4, 'GZUtvtkpmiu+fxCk5vKG62RKVlFpSkhaeGNhQ0MzT0N5ZGo4RlE9PQ==', 'SOwMpEXuyZnOMbbH5RzGK0ZZd0JRaWk4V1FVenFTVUQrMXpVcGc9PQ==', 15, 'dESkFQZNmrGrS4MKtmECWVhuMzdNM0VHUkl6Zm9BR1ZxV2dKYzA0V2JKVi83NTY1akhaTFI3KzhRSDkvZTRveFk1eTcycTUrUWhtTGN2bHE=', 'WKeq0aVgwot4oj4g5+gokkloU21tZ2doajNmQXFpWXl4Y0lMS3c9PQ==', 'juan', '$2y$10$Ek.wRKThW3EG65U7pRQwjeQW3Fc10jNJyihcRuZqovd73Dy99A3ha', '2026-03-16 11:41:58');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user_security_answers`
+--
+
+CREATE TABLE `user_security_answers` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `user_type` enum('admin','staff') NOT NULL,
+  `question_id` int(11) NOT NULL,
+  `answer_hash` varchar(255) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `user_security_answers`
+--
+
+INSERT INTO `user_security_answers` (`id`, `user_id`, `user_type`, `question_id`, `answer_hash`, `created_at`, `updated_at`) VALUES
+(5, 2, 'admin', 1, '$2y$10$5RE6F5Fq43X2fjf/1EHX3OBPh.j58cP7bJWwPB4tu2192H2jLTCHW', '2026-03-20 02:10:15', '2026-03-20 02:10:15');
 
 --
 -- Indexes for dumped tables
@@ -294,11 +344,25 @@ ALTER TABLE `package_items`
   ADD KEY `fk_equipment` (`equipment_id`);
 
 --
+-- Indexes for table `security_questions`
+--
+ALTER TABLE `security_questions`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Indexes for table `staff_info`
 --
 ALTER TABLE `staff_info`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `username` (`username`);
+
+--
+-- Indexes for table `user_security_answers`
+--
+ALTER TABLE `user_security_answers`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_user_question` (`user_id`,`user_type`,`question_id`),
+  ADD KEY `question_id` (`question_id`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -338,7 +402,7 @@ ALTER TABLE `equipments`
 -- AUTO_INCREMENT for table `login_attempts`
 --
 ALTER TABLE `login_attempts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=43;
 
 --
 -- AUTO_INCREMENT for table `packages`
@@ -353,10 +417,22 @@ ALTER TABLE `package_items`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
+-- AUTO_INCREMENT for table `security_questions`
+--
+ALTER TABLE `security_questions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+
+--
 -- AUTO_INCREMENT for table `staff_info`
 --
 ALTER TABLE `staff_info`
   MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `user_security_answers`
+--
+ALTER TABLE `user_security_answers`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- Constraints for dumped tables
@@ -382,6 +458,12 @@ ALTER TABLE `equipments`
 ALTER TABLE `package_items`
   ADD CONSTRAINT `fk_equipment` FOREIGN KEY (`equipment_id`) REFERENCES `equipments` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_package` FOREIGN KEY (`package_id`) REFERENCES `packages` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `user_security_answers`
+--
+ALTER TABLE `user_security_answers`
+  ADD CONSTRAINT `user_security_answers_ibfk_1` FOREIGN KEY (`question_id`) REFERENCES `security_questions` (`id`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

@@ -5,7 +5,12 @@ class StaffAuth {
     public function __construct($db) {
         $this->conn = $db;
     }
-
+    public function requireLogin() {
+        if (!$this->isLoggedIn()) {
+            header("Location: ../login.php");
+            exit();
+        }
+    }
     private function dec($data) {
         if ($data === null || $data === '') return '';
         $decoded   = base64_decode($data);

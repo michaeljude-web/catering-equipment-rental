@@ -20,6 +20,7 @@
                 <li class="nav-item"><a class="nav-link" href="packages.php"><i class="fa-solid fa-box me-1"></i> Packages</a></li>
                 <li class="nav-item"><a class="nav-link" href="staff.php"><i class="fa-solid fa-users-gear me-1"></i> Employee</a></li>
                 <li class="nav-item"><a class="nav-link" href="reports.php"><i class="fa-solid fa-chart-line me-1"></i> Reports</a></li>
+                <li class="nav-item"><a class="nav-link" href="settings.php"><i class="fa-solid fa-gear me-1"></i>Settings</a></li>
                 <li class="nav-item"><a class="nav-link text-danger" href="../logout.php"><i class="fa-solid fa-right-from-bracket me-1"></i> Logout</a></li>
             </ul>
         </div>
@@ -66,6 +67,7 @@
                     <i class="fa-solid fa-chart-line me-2"></i> Reports
                 </a>
             </li>
+            <li class="nav-item"><a class="nav-link text-dark" href="settings.php"><i class="fa-solid fa-gear me-1"></i>Settings</a></li>
             <li class="nav-item mt-auto">
                 <a href="../logout.php" class="nav-link text-danger">
                     <i class="fa-solid fa-right-from-bracket me-2"></i> Logout
