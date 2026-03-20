@@ -144,7 +144,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$is_banned) {
                     <div class="alert alert-danger text-center" id="bannedAlert">
                         <i class="fas fa-ban me-1"></i>
                         Too many failed attempts.<br>
-                        <strong>Try again in <span id="countdown"><?= $ban_secs_left ?></span> second<?= $ban_secs_left !== 1 ? 's' : '' ?>.</strong>
                     </div>
                     <?php elseif (isset($_GET['reset'])): ?>
                     <div class="alert alert-success py-2 small">
